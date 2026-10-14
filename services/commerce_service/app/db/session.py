@@ -21,6 +21,6 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_session() -> Iterator[Session]:
-    """Yield a session for one request and close it afterward."""
-    with get_session_factory()() as session:
+    """Commit a successful request or roll it back on failure."""
+    with get_session_factory()() as session, session.begin():
         yield session
