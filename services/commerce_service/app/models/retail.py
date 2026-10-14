@@ -93,6 +93,7 @@ class Order(Base):
     exchange_payment_method_id: Mapped[str | None] = mapped_column(ForeignKey("payment_methods.id"))
     exchange_price_difference: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     return_payment_method_id: Mapped[str | None] = mapped_column(ForeignKey("payment_methods.id"))
+    return_estimated_refund: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
 
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list[OrderItem]] = relationship(back_populates="order", cascade="all, delete-orphan")
