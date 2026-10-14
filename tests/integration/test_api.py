@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from backend.app.main import app
+from services.commerce_service.app.main import app
 
 
 @pytest.mark.asyncio

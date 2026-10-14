@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.core.config import get_settings
+from services.commerce_service.app.core.config import get_settings
 
 
 @lru_cache

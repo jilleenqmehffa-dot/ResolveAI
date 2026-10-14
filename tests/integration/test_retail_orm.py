@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 
-from backend.app.models import (
+from services.commerce_service.app.models import (
     Base,
     Fulfillment,
     FulfillmentItem,

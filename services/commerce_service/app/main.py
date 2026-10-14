@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from backend.app.api.routes.health import router as health_router
+from services.commerce_service.app.api.health import router as health_router
 
 
 def create_app() -> FastAPI:

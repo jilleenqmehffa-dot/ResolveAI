@@ -2,8 +2,8 @@
 
 from sqlalchemy import select
 
-from backend.app.core.config import get_settings
-from backend.app.db.session import get_engine, get_session_factory
+from services.commerce_service.app.core.config import get_settings
+from services.commerce_service.app.db.session import get_engine, get_session_factory
 
 
 def test_session_factory_uses_database_url(monkeypatch) -> None:

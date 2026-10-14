@@ -13,7 +13,7 @@ uv sync
 启动开发服务器：
 
 ```bash
-uv run uvicorn backend.app.main:app --reload
+uv run uvicorn services.commerce_service.app.main:app --reload
 ```
 
 服务默认运行在 `http://127.0.0.1:8000`。访问 `/health` 检查应用状态，访问 `/docs` 查看交互式 API 文档。
@@ -28,7 +28,7 @@ uv run pytest
 
 先确认 `.env` 中的 `DATABASE_URL` 能连接 PostgreSQL。若数据库运行在 Docker 中，容器需要将 5432 端口发布到 URL 指定的宿主机端口。
 
-修改 `backend/app/models/` 中的 ORM 模型后，生成并检查迁移脚本：
+修改 `services/commerce_service/app/models/` 中的 ORM 模型后，生成并检查迁移脚本：
 
 ```bash
 uv run alembic revision --autogenerate -m "describe schema change"

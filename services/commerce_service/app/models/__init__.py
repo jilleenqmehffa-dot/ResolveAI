@@ -1,7 +1,7 @@
 """Database models and shared metadata."""
 
-from backend.app.models.base import Base
-from backend.app.models.retail import (
+from services.commerce_service.app.models.base import Base
+from services.commerce_service.app.models.retail import (
     Fulfillment,
     FulfillmentItem,
     Order,
