@@ -2,8 +2,8 @@
 
 from services.commerce_service.app.models.base import Base
 from services.commerce_service.app.models.retail import (
-    Fulfillment,
     FulfillmentItem,
+    FulfillmentTracking,
     Order,
     OrderExchangeItem,
     OrderItem,
@@ -12,13 +12,14 @@ from services.commerce_service.app.models.retail import (
     PaymentMethod,
     Product,
     User,
+    UserOrderLink,
     Variant,
 )
 
 __all__ = [
     "Base",
-    "Fulfillment",
     "FulfillmentItem",
+    "FulfillmentTracking",
     "Order",
     "OrderExchangeItem",
     "OrderItem",
@@ -27,5 +28,6 @@ __all__ = [
     "PaymentMethod",
     "Product",
     "User",
+    "UserOrderLink",
     "Variant",
 ]

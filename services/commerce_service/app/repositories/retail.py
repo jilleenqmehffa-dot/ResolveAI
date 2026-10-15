@@ -73,7 +73,8 @@ class UserRepository:
         statement = (
             select(PaymentMethod)
             .where(
-                PaymentMethod.id == payment_method_id, PaymentMethod.user_id == user_id
+                PaymentMethod.payment_method_id == payment_method_id,
+                PaymentMethod.user_id == user_id,
             )
             .with_for_update(of=PaymentMethod)
             .execution_options(populate_existing=True)
@@ -90,6 +91,10 @@ class PaymentRepository:
     ) -> None:
         order.payment_history.append(
             OrderPayment(
+                position=max(
+                    (payment.position for payment in order.payment_history), default=-1
+                )
+                + 1,
                 transaction_type=kind,
                 amount=amount,
                 payment_method_id=payment_method_id,
@@ -103,8 +108,10 @@ class ExchangeRepository:
 
     def create_request(self, order: Order, pairs: list[tuple[str, str]]) -> None:
         order.exchange_items.extend(
-            OrderExchangeItem(original_item_id=original, new_item_id=new)
-            for original, new in pairs
+            OrderExchangeItem(position=position, old_item_id=original, new_item_id=new)
+            for position, (original, new) in enumerate(
+                pairs, start=len(order.exchange_items)
+            )
         )
 
 
@@ -114,5 +121,6 @@ class ReturnRepository:
 
     def create_request(self, order: Order, item_ids: list[str]) -> None:
         order.return_items.extend(
-            OrderReturnItem(item_id=item_id) for item_id in item_ids
+            OrderReturnItem(position=position, item_id=item_id)
+            for position, item_id in enumerate(item_ids, start=len(order.return_items))
         )

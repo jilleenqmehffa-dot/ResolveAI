@@ -54,25 +54,25 @@ def sessions(tmp_path):
                     variants=[
                         Variant(
                             item_id="a",
-                            options={"size": "S"},
+                            options_json='{"size": "S"}',
                             price=Decimal("10.00"),
                             available=True,
                         ),
                         Variant(
                             item_id="b",
-                            options={"size": "M"},
+                            options_json='{"size": "M"}',
                             price=Decimal("15.00"),
                             available=True,
                         ),
                         Variant(
                             item_id="c",
-                            options={"size": "L"},
+                            options_json='{"size": "L"}',
                             price=Decimal("7.00"),
                             available=True,
                         ),
                         Variant(
                             item_id="z",
-                            options={"size": "XL"},
+                            options_json='{"size": "XL"}',
                             price=Decimal("20.00"),
                             available=False,
                         ),
@@ -84,7 +84,7 @@ def sessions(tmp_path):
                     variants=[
                         Variant(
                             item_id="x",
-                            options={"color": "red"},
+                            options_json='{"color": "red"}',
                             price=Decimal("30.00"),
                             available=True,
                         )
@@ -94,13 +94,12 @@ def sessions(tmp_path):
                     user_id="u1",
                     first_name="Ada",
                     last_name="Lin",
-                    address={},
                     email="ada@example.com",
                     payment_methods=[
-                        PaymentMethod(id="card1", source="credit_card"),
-                        PaymentMethod(id="card3", source="credit_card"),
+                        PaymentMethod(payment_method_id="card1", source="credit_card"),
+                        PaymentMethod(payment_method_id="card3", source="credit_card"),
                         PaymentMethod(
-                            id="gift1", source="gift_card", balance=Decimal("6.00")
+                            payment_method_id="gift1", source="gift_card", balance=Decimal("6.00")
                         ),
                     ],
                 ),
@@ -108,9 +107,8 @@ def sessions(tmp_path):
                     user_id="u2",
                     first_name="Bob",
                     last_name="Chen",
-                    address={},
                     email="bob@example.com",
-                    payment_methods=[PaymentMethod(id="card2", source="credit_card")],
+                    payment_methods=[PaymentMethod(payment_method_id="card2", source="credit_card")],
                 ),
             ]
         )
@@ -120,33 +118,36 @@ def sessions(tmp_path):
                 Order(
                     order_id=order_id,
                     user_id="u1",
-                    address={},
                     status=status,
                     items=[
                         OrderItem(
+                            position=0,
                             name="Shirt",
                             product_id="p1",
                             item_id="a",
                             price=Decimal("10.00"),
-                            options={"size": "S"},
+                            options_json='{"size": "S"}',
                         ),
                         OrderItem(
+                            position=1,
                             name="Shirt",
                             product_id="p1",
                             item_id="a",
                             price=Decimal("10.00"),
-                            options={"size": "S"},
+                            options_json='{"size": "S"}',
                         ),
                         OrderItem(
+                            position=2,
                             name="Shirt",
                             product_id="p1",
                             item_id="b",
                             price=Decimal("15.00"),
-                            options={"size": "M"},
+                            options_json='{"size": "M"}',
                         ),
                     ],
                     payment_history=[
                         OrderPayment(
+                            position=0,
                             transaction_type="payment",
                             amount=Decimal("35.00"),
                             payment_method_id="card1",
@@ -255,10 +256,10 @@ def test_pending_change_updates_each_item_and_charges_once(sessions) -> None:
         )
         assert order.status == "pending (item modified)"
         assert [
-            (item.item_id, item.price, item.options) for item in order.items[:2]
+            (item.item_id, item.price, item.options_json) for item in order.items[:2]
         ] == [
-            ("b", Decimal("15.00"), {"size": "M"}),
-            ("c", Decimal("7.00"), {"size": "L"}),
+            ("b", Decimal("15.00"), '{"size": "M"}'),
+            ("c", Decimal("7.00"), '{"size": "L"}'),
         ]
         assert [(p.transaction_type, p.amount) for p in order.payment_history][-1] == (
             "payment",
@@ -293,7 +294,7 @@ def test_gift_card_payment_refund_and_insufficient_balance(sessions) -> None:
             order.payment_history[-1].amount,
         ) == ("refund", Decimal("8.00"))
         assert [
-            (item.original_item_id, item.new_item_id) for item in order.exchange_items
+            (item.old_item_id, item.new_item_id) for item in order.exchange_items
         ] == [("b", "c")]
         assert order.exchange_price_difference == Decimal("-8.00")
         assert [item.item_id for item in order.items] == ["a", "a", "b"]
@@ -338,7 +339,50 @@ def test_exception_rolls_back_entire_exchange(sessions, monkeypatch) -> None:
         assert session.get(PaymentMethod, "gift1").balance == Decimal("6.00")
         assert (
             session.scalar(
-                select(func.count(OrderPayment.id)).where(
+                select(func.count(OrderPayment.position)).where(
+                    OrderPayment.order_id == "delivered"
+                )
+            )
+            == 1
+        )
+
+
+def test_existing_transaction_is_reused_without_savepoint(sessions) -> None:
+    with sessions.begin() as session:
+        transaction = session.get_transaction()
+        order = RetailService(session).modify_pending_order_items(
+            "pending", ["a"], ["b"], "card1", "u1"
+        )
+        assert session.get_transaction() is transaction
+        assert not session.in_nested_transaction()
+        assert order.status == "pending (item modified)"
+
+    with sessions() as session:
+        assert session.get(Order, "pending").status == "pending (item modified)"
+
+
+def test_failure_rolls_back_existing_transaction(sessions, monkeypatch) -> None:
+    def fail_after_flush(self, order, pairs) -> None:
+        self.session.flush()
+        raise RuntimeError("request storage failed")
+
+    monkeypatch.setattr(ExchangeRepository, "create_request", fail_after_flush)
+    with sessions.begin() as session:
+        session.get(User, "u1").first_name = "Changed"
+        session.flush()
+        with pytest.raises(RuntimeError):
+            RetailService(session).exchange_delivered_order_items(
+                "delivered", ["a"], ["b"], "gift1", "u1"
+            )
+        assert not session.in_transaction()
+
+    with sessions() as session:
+        assert session.get(User, "u1").first_name == "Ada"
+        assert session.get(Order, "delivered").status == "delivered"
+        assert session.get(PaymentMethod, "gift1").balance == Decimal("6.00")
+        assert (
+            session.scalar(
+                select(func.count(OrderPayment.position)).where(
                     OrderPayment.order_id == "delivered"
                 )
             )
@@ -404,7 +448,7 @@ def test_concurrent_exchange_can_only_settle_and_create_once(
         assert order.payment_history[-1].transaction_type == kind
         assert (
             session.scalar(
-                select(func.count(OrderPayment.id)).where(
+                select(func.count(OrderPayment.position)).where(
                     OrderPayment.order_id == "delivered"
                 )
             )

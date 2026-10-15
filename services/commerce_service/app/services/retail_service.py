@@ -1,10 +1,12 @@
 """Catalog reads and transactional retail order changes."""
 
+import json
 from collections import defaultdict, deque
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy.orm import Session, SessionTransaction
+from sqlalchemy.orm import Session
 
 from services.commerce_service.app.core.exceptions import (
     ConflictError,
@@ -51,13 +53,18 @@ class RetailService:
         self.exchanges = ExchangeRepository(session)
         self.returns = ReturnRepository(session)
 
-    def _transaction(self) -> SessionTransaction:
-        """Use a savepoint when the caller already owns the Session transaction."""
-        return (
-            self.session.begin_nested()
-            if self.session.in_transaction()
-            else self.session.begin()
-        )
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        """Join the caller's transaction, or own one when none exists."""
+        if self.session.in_transaction():
+            try:
+                yield
+            except BaseException:
+                self.session.rollback()
+                raise
+        else:
+            with self.session.begin():
+                yield
 
     def list_all_product_types(self) -> list[ProductType]:
         """Return product names and IDs, sorted by name and then ID."""
@@ -90,7 +97,7 @@ class RetailService:
             variant.item_id,
             variant.product_id,
             product_name,
-            dict(variant.options),
+            json.loads(variant.options_json),
             _money(variant.price),
             variant.available,
         )
@@ -114,7 +121,7 @@ class RetailService:
         if not item_ids:
             raise ValidationError("At least one item is required")
         available: dict[str, deque[OrderItem]] = defaultdict(deque)
-        for item in sorted(order.items, key=lambda item: item.id):
+        for item in sorted(order.items, key=lambda item: item.position):
             available[item.item_id].append(item)
         selected = []
         for item_id in item_ids:
@@ -166,7 +173,7 @@ class RetailService:
             order,
             "payment" if difference > 0 else "refund",
             abs(difference),
-            method.id,
+            method.payment_method_id,
         )
 
     def modify_pending_order_items(
@@ -186,7 +193,7 @@ class RetailService:
             for item, variant in changes:
                 item.item_id = variant.item_id
                 item.price = _money(variant.price)
-                item.options = dict(variant.options)
+                item.options_json = variant.options_json
             order.status = "pending (item modified)"
             self.orders.save(order)
         return order
@@ -206,7 +213,7 @@ class RetailService:
             method = self._payment_method(user_id, payment_method_id)
             self._settle_difference(order, method, difference)
             order.status = "exchange requested"
-            order.exchange_payment_method_id = method.id
+            order.exchange_payment_method_id = method.payment_method_id
             order.exchange_price_difference = difference
             self.exchanges.create_request(
                 order, [(item.item_id, variant.item_id) for item, variant in changes]
@@ -232,19 +239,18 @@ class RetailService:
                 if payment.transaction_type == "payment"
             ]
             original_id = (
-                min(original_payments, key=lambda payment: payment.id).payment_method_id
+                min(
+                    original_payments, key=lambda payment: payment.position
+                ).payment_method_id
                 if original_payments
                 else None
             )
-            if method.source != "gift_card" and method.id != original_id:
+            if method.source != "gift_card" and method.payment_method_id != original_id:
                 raise ValidationError(
                     "Refund method must be the original payment method or a gift card"
                 )
             order.status = "return requested"
-            order.return_payment_method_id = method.id
-            order.return_estimated_refund = _money(
-                sum((item.price for item in selected), Decimal("0.00"))
-            )
+            order.return_payment_method_id = method.payment_method_id
             self.returns.create_request(order, [item.item_id for item in selected])
             self.orders.save(order)
         return order
