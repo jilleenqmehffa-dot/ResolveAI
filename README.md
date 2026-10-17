@@ -18,6 +18,19 @@ uv run uvicorn services.commerce_service.app.main:app --reload
 
 服务默认运行在 `http://127.0.0.1:8000`。访问 `/health` 检查应用状态，访问 `/docs` 查看交互式 API 文档。
 
+当前零售 API 路由：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/products`、`/products/{product_id}`、`/items/{item_id}` | 查询商品和规格 |
+| GET | `/customers/{user_id}`、`/customers/{user_id}/payment-methods`、`/customers/{user_id}/orders` | 查询用户、付款方式和订单列表 |
+| GET | `/orders/{order_id}?user_id=...` | 查询指定用户的订单详情 |
+| POST | `/orders/{order_id}/items/modify` | 修改待处理订单商品 |
+| POST | `/orders/{order_id}/exchange` | 申请已送达订单换货 |
+| POST | `/orders/{order_id}/return` | 申请已送达订单退货 |
+
+修改和换货请求体包含 `user_id`、`item_ids`、`new_item_ids`、`payment_method_id`；退货请求体不需要 `new_item_ids`。业务错误分别返回 404、409 或 422。当前 API 用请求中的 `user_id` 校验订单和付款方式归属，尚未接入登录认证。
+
 运行测试：
 
 ```bash
