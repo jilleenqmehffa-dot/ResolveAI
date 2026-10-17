@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "failed",
+  "artifact": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html",
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  },
+  "error": "A delivery attempt is unfinished or failed; complete a successful deliver before trusting this artifact.",
+  "diagnostics": [
+    {
+      "code": "delivery/provenance-failed",
+      "severity": "error",
+      "message": "A delivery attempt is unfinished or failed; complete a successful deliver before trusting this artifact.",
+      "subject": {
+        "artifact": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html",
+        "provenance": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.delivery.json"
+      },
+      "evidence": {
+        "pendingJournal": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.delivery-pending.json",
+        "found": true
+      },
+      "supportedFixes": [
+        "finish any active delivery, then rerun deliver successfully; retain the pending journal until recovery succeeds"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "resolveai-v2.browser-check.json",
+    "files": []
+  }
+}

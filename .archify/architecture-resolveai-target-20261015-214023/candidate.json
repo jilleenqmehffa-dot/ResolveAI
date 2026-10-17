@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ResolveAI V2 目标架构",
+    "subtitle": "基于 docs 架构图片；规划组件与当前实现见架构说明",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "benchmark_clients", "type": "external", "label": "测试客户端", "sublabel": "Benchmark / Load", "pos": [40, 270], "size": [145, 76] },
+    { "id": "agent_api", "type": "backend", "label": "Agent API", "sublabel": "chat / executions / health", "pos": [265, 270], "size": [165, 76] },
+    { "id": "execution_manager", "type": "backend", "label": "执行管理", "sublabel": "状态 · 重试 · 检查点", "pos": [510, 270], "size": [165, 76] },
+    { "id": "rabbitmq", "type": "messagebus", "label": "RabbitMQ", "sublabel": "异步任务队列", "pos": [755, 270], "size": [155, 76] },
+    { "id": "celery_worker", "type": "backend", "label": "Celery Worker", "sublabel": "消费并执行任务", "pos": [990, 270], "size": [165, 76] },
+    { "id": "langgraph", "type": "backend", "label": "Agent 决策", "sublabel": "LangGraph · Tools", "pos": [990, 500], "size": [165, 76] },
+    { "id": "toxiproxy", "type": "security", "label": "Toxiproxy", "sublabel": "测试时注入网络故障", "pos": [755, 500], "size": [155, 76] },
+    { "id": "commerce_api", "type": "backend", "label": "Commerce API", "sublabel": "商品 · 订单 · 退换货", "pos": [510, 500], "size": [165, 76] },
+    { "id": "commerce_db", "type": "database", "label": "商品业务库", "sublabel": "产品 · 用户 · 订单", "pos": [510, 720], "size": [165, 76] },
+    { "id": "agent_db", "type": "database", "label": "Agent 执行库", "sublabel": "消息 · 执行 · 事件", "pos": [510, 50], "size": [165, 76] }
+  ],
+  "connections": [
+    { "id": "submit", "from": "benchmark_clients", "to": "agent_api", "label": "提交请求", "variant": "emphasis" },
+    { "id": "create_execution", "from": "agent_api", "to": "execution_manager", "label": "创建执行" },
+    { "id": "persist_execution", "from": "execution_manager", "to": "agent_db", "label": "状态与事件", "fromSide": "top", "toSide": "bottom" },
+    { "id": "enqueue", "from": "execution_manager", "to": "rabbitmq", "label": "发布任务" },
+    { "id": "consume", "from": "rabbitmq", "to": "celery_worker", "label": "消费任务" },
+    { "id": "run_graph", "from": "celery_worker", "to": "langgraph", "label": "运行 Agent", "fromSide": "bottom", "toSide": "top" },
+    { "id": "tool_http", "from": "langgraph", "to": "toxiproxy", "label": "工具 HTTP", "variant": "emphasis" },
+    { "id": "forward_http", "from": "toxiproxy", "to": "commerce_api", "label": "转发请求" },
+    { "id": "business_sql", "from": "commerce_api", "to": "commerce_db", "label": "业务事务", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "目标架构", "items": ["Agent Service 与 Commerce Service 分离", "Worker 执行 LangGraph，任务经 RabbitMQ 分发", "Agent 与商品业务使用独立逻辑数据库"] },
+    { "dot": "amber", "title": "故障与恢复", "items": ["Toxiproxy 只代理 Agent 到 Commerce 的 HTTP", "执行状态、工具调用与检查点持久化", "写工具结果未知时先核对，避免重复副作用"] },
+    { "dot": "slate", "title": "当前仓库", "items": ["已实现 Commerce Service 与零售数据导入", "Agent、队列、Worker 和故障注入属于 V2 规划"] }
+  ]
+}

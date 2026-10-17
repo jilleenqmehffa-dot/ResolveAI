@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "ad54eba2-9869-48c2-9cb8-36219ba4d202",
+  "artifact": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\n[1015/214940.837:ERROR:chrome\\app\\chrome_main_delegate.cc:1649] Remote debugging pipe file descriptors are not open.\nChrome transport: Node v24.19.0, libuv 1.52.1, linux; pid=27221, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "resolveai-v2-checked.browser-check.json",
+    "files": []
+  },
+  "error": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome stderr:\n[1015/214940.837:ERROR:chrome\\app\\chrome_main_delegate.cc:1649] Remote debugging pipe file descriptors are not open.\nChrome transport: Node v24.19.0, libuv 1.52.1, linux; pid=27221, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+}

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+    "sha256": "1cfb0d180d8356d5dd8e8eb45d15545bdc1131df8ff4b62fd76114b38e6d87dd",
+    "bytes": 3592
+  },
+  "artifact": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html",
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  },
+  "gates": {
+    "validate": "not-run",
+    "deliver": "fail",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "deliver",
+  "diagnostics": [
+    {
+      "code": "finalize/stage-failure",
+      "severity": "error",
+      "message": "The deliver stage did not complete successfully.",
+      "subject": {
+        "stage": "deliver"
+      },
+      "evidence": {
+        "exitCode": 1,
+        "reason": "Command failed: /home/lcx20/.nvm/versions/node/v24.19.0/bin/node /home/lcx20/.agents/skills/archify/bin/archify.mjs deliver architecture /home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json /home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html --quality showcase --json\n"
+      },
+      "supportedFixes": [
+        "use the compact finalize summary to repair the named subject in place, then rerun finalize once"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.finalize.json",
+    "summaryReceipt": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.finalize-summary.json"
+  },
+  "update": {
+    "status": "unavailable",
+    "installedVersion": null,
+    "availableVersion": null,
+    "releaseNotes": null,
+    "checkedAt": null,
+    "source": null,
+    "noticeRequired": false,
+    "noticeText": null,
+    "reason": "check-failed"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 391
+}

@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-15T13:44:16.867Z",
+  "specification": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+    "sha256": "4e18dfb353e3a9a45e53e4ecc3ad159479a6633c983f261073908640040075d6",
+    "bytes": 3600
+  },
+  "artifact": {
+    "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/home/lcx20/.nvm/versions/node/v24.19.0/bin/node",
+        "/home/lcx20/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "4e18dfb353e3a9a45e53e4ecc3ad159479a6633c983f261073908640040075d6",
+          "bytes": 3600
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 359,
+      "command": [
+        "/home/lcx20/.nvm/versions/node/v24.19.0/bin/node",
+        "/home/lcx20/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "ad54eba2-9869-48c2-9cb8-36219ba4d202",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+        "output": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "specification": {
+          "sha256": "4e18dfb353e3a9a45e53e4ecc3ad159479a6633c983f261073908640040075d6",
+          "bytes": 3600
+        },
+        "artifact": {
+          "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+          "bytes": 762408
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 133,
+      "command": [
+        "/home/lcx20/.nvm/versions/node/v24.19.0/bin/node",
+        "/home/lcx20/.agents/skills/archify/bin/archify.mjs",
+        "check",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "artifact": {
+          "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+          "bytes": 762408
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 69.3,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 6.2259414225941425,
+            "maxBends": 0,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 80,
+            "minInteriorSegmentPx": null,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 50,
+            "emptyTopRatio": 0.058,
+            "occupiedTop": 50,
+            "viewBoxTop": 0,
+            "canvasHeight": 864,
+            "typicalNodeHeight": 76,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "legacy-930",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 930,
+            "actualBudgetPx": 930,
+            "limit": "legacy",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": false,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "submit",
+              "from": "benchmark_clients",
+              "to": "agent_api"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 6.2259414225941425,
+            "semanticTextCount": 29
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "ad54eba2-9869-48c2-9cb8-36219ba4d202"
+      }
+    },
+    "browser-check": {
+      "status": "skipped",
+      "exitCode": 2,
+      "durationMs": 23,
+      "command": [
+        "/home/lcx20/.nvm/versions/node/v24.19.0/bin/node",
+        "/home/lcx20/.agents/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "skipped",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "ad54eba2-9869-48c2-9cb8-36219ba4d202",
+        "artifact": {
+          "path": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+          "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+          "bytes": 762408
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "unavailable",
+          "executable": null
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/chrome-unavailable",
+            "severity": "warning",
+            "message": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path.",
+            "subject": {
+              "artifact": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html"
+            },
+            "evidence": {
+              "executable": null
+            },
+            "supportedFixes": [
+              "set ARCHIFY_CHROME to a Chrome or Chromium executable and rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "skipped",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "readability": {
+          "status": "skipped",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "resolveai-v2-checked.browser-check.json",
+          "files": []
+        },
+        "error": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome or Chromium executable and rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.finalize.json",
+    "summaryReceipt": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.finalize-summary.json",
+    "browserCheckReceipt": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-15T13:44:17.883Z",
+  "durationMs": 1016,
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.1.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.1.0",
+    "severity": "normal",
+    "checkedAt": "2026-10-15T13:43:11.374Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.1.0. A previous check at 2026-10-15T13:43:11.374Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.1.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:ffedc53390c9da6e859f41e432c5d2d0615a23cf00a503181f07efbba88a7ce8"
+  }
+}

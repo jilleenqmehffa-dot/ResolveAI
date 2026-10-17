@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "833e45e0-8f0a-4a1a-9c6a-4fbfab511ee9",
+  "status": "failed",
+  "command": "deliver",
+  "stage": "receipt",
+  "input": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+  "output": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html",
+  "artifact": {
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  },
+  "error": "Could not parse the successful artifact-check receipt: Unexpected end of JSON input"
+}

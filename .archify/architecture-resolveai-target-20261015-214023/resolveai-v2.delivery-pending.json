@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "command": "deliver",
+  "status": "pending",
+  "receiptId": "833e45e0-8f0a-4a1a-9c6a-4fbfab511ee9",
+  "input": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+  "output": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2.html"
+}

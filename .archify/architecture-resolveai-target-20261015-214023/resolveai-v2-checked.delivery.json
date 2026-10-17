@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ad54eba2-9869-48c2-9cb8-36219ba4d202",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/candidate.json",
+  "output": "/home/lcx20/projects/ResolveAI/.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html",
+  "specification": {
+    "sha256": "4e18dfb353e3a9a45e53e4ecc3ad159479a6633c983f261073908640040075d6",
+    "bytes": 3600
+  },
+  "artifact": {
+    "sha256": "ad0efb888bb068ddc013cb1fff5e2a3296164280996a3ab0fbe2a15f1e3fe806",
+    "bytes": 762408
+  }
+}
