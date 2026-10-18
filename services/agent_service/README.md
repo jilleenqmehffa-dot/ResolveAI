@@ -1,4 +1,38 @@
-# Agent Service 数据库
+# Agent Service
+
+## DeepSeek 模型
+
+在仓库根目录的 `.env` 中设置 `DEEPSEEK_API_KEY`（参考 `.env.example`），或设置同名环境变量。
+可选的 `DEEPSEEK_MODEL` 默认为 `deepseek-flash`。模型由
+`services.agent_service.app.agents.llm.create_deepseek_model()` 创建；创建时不会发起 API 请求，
+调用模型时才需要有效的 Key。图节点可对返回的模型调用 `bind_tools(...)`。
+
+## Agent 图
+
+`create_agent_graph()` 按 `prepare_context → agent → tool_guard → tools/rejected → agent`
+组装五个节点。无 Tool Call 的 Agent 回复直接结束。`tool_guard` 使用 Tool 的输入
+Schema 校验参数；同一消息的多个 Tool Call 会整批拒绝。Commerce Client 只负责 HTTP。
+
+```python
+from langchain_core.messages import HumanMessage
+
+from services.agent_service.app.agents.graph import create_agent_graph
+from services.agent_service.app.transport.commer_client import CommerceClient
+
+async with CommerceClient(commerce_base_url, authenticated_user_id) as client:
+    graph = create_agent_graph(client)
+    result = await graph.ainvoke({
+        "messages": [HumanMessage(content=user_text)],
+        "tool_call_count": 0,
+        "last_error": None,
+        "guard_result": None,
+    })
+```
+
+`context_loader` 可在开始时加载此前的会话消息；调用方须按当前用户和会话限制其范围。
+当前图尚未接入数据库 Checkpoint、执行租约和持久化事件。
+
+## 数据库
 
 Agent 表使用独立 PostgreSQL 数据库。设置 `AGENT_DATABASE_URL`，指向与 Commerce 的
 `DATABASE_URL` 不同的数据库，然后从仓库根目录执行：
