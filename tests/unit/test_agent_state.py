@@ -3,7 +3,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
-from services.agent_service.agents.state import AgentState
+from services.agent_service.app.agents.state import AgentState
 
 
 def test_agent_state_merge_and_overwrite() -> None:

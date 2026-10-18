@@ -3,8 +3,11 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from services.agent_service.agents.routing import route_after_agent, route_after_guard
-from services.agent_service.agents.state import AgentState
+from services.agent_service.app.agents.routing import (
+    route_after_agent,
+    route_after_guard,
+)
+from services.agent_service.app.agents.state import AgentState
 
 
 def state_with(message: AIMessage | HumanMessage) -> AgentState:
@@ -35,7 +38,7 @@ def test_agent_rejects_missing_or_non_assistant_message() -> None:
         route_after_agent(state_with(HumanMessage(content="Hello")))
 
 
-@pytest.mark.parametrize("decision", ["allowed", "rejected", "needs_confirmation"])
+@pytest.mark.parametrize("decision", ["allowed", "rejected"])
 def test_guard_routes_each_decision(decision: str) -> None:
     state = state_with(tool_message())
     state["guard_result"] = {
@@ -46,6 +49,17 @@ def test_guard_routes_each_decision(decision: str) -> None:
     assert route_after_guard(state) == (
         "approved" if decision == "allowed" else decision
     )
+
+
+def test_guard_rejects_unsupported_decision() -> None:
+    state = state_with(tool_message())
+    state["guard_result"] = {
+        "tool_call_id": "call-1",
+        "decision": "needs_confirmation",  # type: ignore[typeddict-item]
+        "reason": None,
+    }
+    with pytest.raises(ValueError, match="unknown guard decision"):
+        route_after_guard(state)
 
 
 def test_guard_fails_closed_on_missing_or_mismatched_approval() -> None:

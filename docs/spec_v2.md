@@ -29,8 +29,10 @@ services/agent_service/
 │   ├── models/          # Agent 持久化模型
 │   ├── repositories/    # Agent 数据访问
 │   ├── schemas/         # API 与任务载荷模型
-│   ├── db/              # Agent 数据库连接和迁移配置
+│   ├── db/              # Agent 数据库连接与会话
 │   └── core/            # 配置、日志、错误与请求追踪
+├── alembic/             # Agent 数据库独立迁移链
+├── alembic.ini
 └── Dockerfile
 ```
 

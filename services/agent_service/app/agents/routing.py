@@ -4,10 +4,10 @@ from typing import Literal
 
 from langchain_core.messages import AIMessage
 
-from services.agent_service.agents.state import AgentState
+from services.agent_service.app.agents.state import AgentState
 
 AgentRoute = Literal["tool_guard", "end"]
-GuardRoute = Literal["approved", "rejected", "needs_confirmation"]
+GuardRoute = Literal["approved", "rejected"]
 
 
 def route_after_agent(state: AgentState) -> AgentRoute:
@@ -43,7 +43,5 @@ def route_after_guard(state: AgentState) -> GuardRoute:
 
     if decision == "rejected":
         return "rejected"
-    if decision == "needs_confirmation":
-        return "needs_confirmation"
 
     raise ValueError(f"unknown guard decision: {decision}")

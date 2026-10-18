@@ -23,7 +23,7 @@ class GuardResult(TypedDict):
     """Decision for exactly one pending tool call."""
 
     tool_call_id: str
-    decision: Literal["allowed", "rejected", "needs_confirmation"]
+    decision: Literal["allowed", "rejected"]
     reason: str | None
 
 
