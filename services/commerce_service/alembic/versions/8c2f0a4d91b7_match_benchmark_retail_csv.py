@@ -10,9 +10,9 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 
+from alembic import op
 from sqlalchemy import text
 
-from alembic import op
 from services.commerce_service.app.models import Base
 
 revision: str = "8c2f0a4d91b7"

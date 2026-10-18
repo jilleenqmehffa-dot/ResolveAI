@@ -37,22 +37,22 @@ uv run uvicorn services.commerce_service.app.main:app --reload
 uv run pytest
 ```
 
-## 数据库迁移
+## Commerce 数据库迁移
 
 先确认 `.env` 中的 `DATABASE_URL` 能连接 PostgreSQL。若数据库运行在 Docker 中，容器需要将 5432 端口发布到 URL 指定的宿主机端口。
 
 修改 `services/commerce_service/app/models/` 中的 ORM 模型后，生成并检查迁移脚本：
 
 ```bash
-uv run alembic revision --autogenerate -m "describe schema change"
+uv run alembic -c services/commerce_service/alembic.ini revision --autogenerate -m "describe schema change"
 ```
 
-检查 `alembic/versions/` 中生成的 `upgrade()` 和 `downgrade()`，确认变更符合预期后执行：
+检查 `services/commerce_service/alembic/versions/` 中生成的 `upgrade()` 和 `downgrade()`，确认变更符合预期后执行：
 
 ```bash
-uv run alembic upgrade head
-uv run alembic current
-uv run alembic check
+uv run alembic -c services/commerce_service/alembic.ini upgrade head
+uv run alembic -c services/commerce_service/alembic.ini current
+uv run alembic -c services/commerce_service/alembic.ini check
 ```
 
 首次迁移是 `1d3a8191a431_create_retail_schema.py`。最新迁移 `8c2f0a4d91b7_match_benchmark_retail_csv.py` 将零售业务结构调整为可容纳 `benchmark/datasets/db.json` 的 12 张关系表。该迁移负责转换数据库中已有的旧表数据，不会读取 JSON 文件。Alembic 用 `alembic_version` 表记录数据库已执行到哪个版本；`check` 用于检查当前 ORM 是否还有未生成的结构变更。
@@ -70,7 +70,7 @@ uv run alembic check
 地址字段展开到用户和订单表，商品选项保存为 `options_json`，列表顺序保存为 `position`。先执行数据库迁移，再从仓库根目录运行导入 runner：
 
 ```bash
-uv run alembic upgrade head
+uv run alembic -c services/commerce_service/alembic.ini upgrade head
 uv run python -m benchmark.runners.import_retail_json
 ```
 

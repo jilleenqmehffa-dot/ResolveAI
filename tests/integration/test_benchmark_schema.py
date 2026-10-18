@@ -5,10 +5,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, func, select
 
-from alembic import command
 from benchmark.runners.import_retail_json import import_json
 from services.commerce_service.app.core.config import get_settings
 from services.commerce_service.app.models import Base
@@ -187,7 +187,9 @@ def test_upgrade_preserves_legacy_retail_rows(tmp_path, monkeypatch) -> None:
     database = tmp_path / "legacy.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database}")
     get_settings.cache_clear()
-    config = Config("alembic.ini")
+    config = Config(
+        str(Path(__file__).resolve().parents[2] / "services/commerce_service/alembic.ini")
+    )
     try:
         command.upgrade(config, "6f2c9d1a4b70")
         with sqlite3.connect(database) as connection:
