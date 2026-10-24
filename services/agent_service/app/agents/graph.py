@@ -1,6 +1,7 @@
 """Wire the Agent nodes according to the read-only workflow."""
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -27,6 +28,7 @@ def create_agent_graph(
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     max_tool_calls: int = 8,
     recursion_limit: int = 40,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     """Compile the diagram's flow; the caller owns the CommerceClient lifecycle."""
     if recursion_limit < 5:
@@ -57,4 +59,6 @@ def create_agent_graph(
     )
     graph.add_edge("tools", "agent")
     graph.add_edge("rejected", "agent")
-    return graph.compile().with_config({"recursion_limit": recursion_limit})
+    return graph.compile(checkpointer=checkpointer).with_config(
+        {"recursion_limit": recursion_limit}
+    )

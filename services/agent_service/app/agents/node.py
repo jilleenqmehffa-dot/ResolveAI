@@ -1,7 +1,9 @@
 """Nodes for the read-only Commerce Agent graph."""
 
 import json
+from asyncio import sleep
 from collections.abc import Awaitable, Callable, Sequence
+from time import monotonic
 from typing import Any
 
 from langchain_core.messages import (
@@ -12,13 +14,19 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from pydantic import BaseModel, ValidationError
 
 from services.agent_service.app.agents.routing import route_after_guard
 from services.agent_service.app.agents.state import AgentState, ErrorInfo, GuardResult
+from services.agent_service.app.execution.manager import (
+    ExecutionManager,
+    RecoveryAction,
+)
+from services.agent_service.app.execution.tool_invocations import ToolInvocationStore
+from services.agent_service.app.models.agent import ToolExecutionStatus
 from services.agent_service.app.transport.commer_client import CommerceClientError
 
 ContextLoader = Callable[[AgentState], Awaitable[Sequence[BaseMessage]]]
@@ -129,27 +137,115 @@ class AgentNodes:
         )
         return {"guard_result": result, "last_error": error}
 
-    async def tools(self, state: AgentState) -> dict[str, Any]:
-        """Dispatch the single approved call and return one matching ToolMessage."""
+    async def tools(self, state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+        """Dispatch one approved call, retry transient reads, and record attempts."""
         if route_after_guard(state) != "approved":
             raise ValueError("tools node requires an approved call")
         call = state["messages"][-1].tool_calls[0]
         tool = self._tools[call["name"]]
+        configurable = config.get("configurable") or {}
+        manager = configurable.get("execution_manager") or ExecutionManager()
+        invocations = configurable.get("tool_invocations")
+        if not isinstance(manager, ExecutionManager):
+            raise TypeError("execution_manager must be an ExecutionManager")
+        if invocations is not None and not isinstance(invocations, ToolInvocationStore):
+            raise TypeError("tool_invocations must be a ToolInvocationStore")
+
+        started_at = monotonic()
+        local_attempt_count = 0
         error: ErrorInfo | None = None
-        try:
-            data = await tool.ainvoke(call["args"])
-            content = json.dumps({"ok": True, "data": data}, ensure_ascii=False, default=str)
-        except CommerceClientError as exc:
-            error = {
-                "code": exc.code,
-                "source": "tool",
-                "tool_call_id": call["id"],
-                "detail": str(exc),
-            }
-            content = json.dumps(
-                {"ok": False, "error": {"code": exc.code, "detail": str(exc)}},
-                ensure_ascii=False,
-            )
+        while True:
+            if invocations is not None:
+                record = await invocations.start(
+                    call_id=call["id"],
+                    tool_name=call["name"],
+                    args=call["args"],
+                    max_attempts=manager.policy.max_attempts,
+                )
+                if not record.should_invoke:
+                    if record.status is ToolExecutionStatus.SUCCEEDED:
+                        content = json.dumps(
+                            {
+                                "ok": True,
+                                "data": (record.result_payload or {}).get("data"),
+                            },
+                            ensure_ascii=False,
+                            default=str,
+                        )
+                    else:
+                        code = record.error_code or "invocation_not_replayable"
+                        detail = (
+                            (record.result_payload or {})
+                            .get("error", {})
+                            .get("detail", "Tool invocation cannot be replayed")
+                        )
+                        error = {
+                            "code": code,
+                            "source": "tool",
+                            "tool_call_id": call["id"],
+                            "detail": detail,
+                        }
+                        content = json.dumps(
+                            {"ok": False, "error": {"code": code, "detail": detail}},
+                            ensure_ascii=False,
+                        )
+                    break
+                attempt_count = record.attempt_count
+            else:
+                local_attempt_count += 1
+                attempt_count = local_attempt_count
+
+            try:
+                data = await tool.ainvoke(call["args"])
+            except CommerceClientError as exc:
+                decision = manager.decide_failure(
+                    exc,
+                    is_write=False,  # Current Commerce tools are all reads.
+                    attempt_count=attempt_count,
+                    elapsed_seconds=monotonic() - started_at,
+                )
+                error = {
+                    "code": exc.code,
+                    "source": "tool",
+                    "tool_call_id": call["id"],
+                    "detail": str(exc),
+                }
+                payload = {"error": {"code": exc.code, "detail": str(exc)}}
+                if invocations is not None:
+                    if decision.action is RecoveryAction.RETRY:
+                        status = ToolExecutionStatus.RETRY_PENDING
+                    elif decision.action in (
+                        RecoveryAction.VERIFY_RESULT,
+                        RecoveryAction.NEEDS_REVIEW,
+                    ):
+                        status = ToolExecutionStatus.UNKNOWN
+                    else:
+                        status = ToolExecutionStatus.FAILED
+                    await invocations.finish(
+                        call_id=call["id"],
+                        attempt_count=attempt_count,
+                        status=status,
+                        result_payload=payload,
+                        error_code=exc.code,
+                    )
+                if decision.action is RecoveryAction.RETRY:
+                    await sleep(decision.retry_after_seconds or 0)
+                    continue
+                content = json.dumps({"ok": False, **payload}, ensure_ascii=False)
+                break
+            else:
+                if invocations is not None:
+                    await invocations.finish(
+                        call_id=call["id"],
+                        attempt_count=attempt_count,
+                        status=ToolExecutionStatus.SUCCEEDED,
+                        result_payload={"data": data},
+                    )
+                content = json.dumps(
+                    {"ok": True, "data": data}, ensure_ascii=False, default=str
+                )
+                error = None
+                break
         return {
             "messages": [ToolMessage(content=content, tool_call_id=call["id"])],
             "tool_call_count": state["tool_call_count"] + 1,
@@ -166,7 +262,10 @@ class AgentNodes:
         if not isinstance(response, AIMessage) or not response.tool_calls:
             raise ValueError("rejected node requires tool calls")
         content = json.dumps(
-            {"ok": False, "error": {"code": "guard_rejected", "detail": result["reason"]}},
+            {
+                "ok": False,
+                "error": {"code": "guard_rejected", "detail": result["reason"]},
+            },
             ensure_ascii=False,
         )
         return {
