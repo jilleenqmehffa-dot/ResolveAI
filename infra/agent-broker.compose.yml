@@ -1,0 +1,10 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+    volumes:
+      - agent_rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  agent_rabbitmq_data:

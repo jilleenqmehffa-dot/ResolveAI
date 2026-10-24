@@ -12,8 +12,8 @@
 
 | 组件 | 目标职责 | 当前工作区状态 |
 | --- | --- | --- |
-| Agent Service（目标 FastAPI :8000） | `/chat`、`/executions`、`/health`；LangGraph 决策与工具编排；执行状态管理 | 已有 Agent ORM、状态与路由、Commerce 只读工具和 DeepSeek 模型工厂；API 与执行 Worker 尚未接入 |
-| RabbitMQ 与 Celery Worker | 持久任务投递、异步消费、重试和结果回写 | 尚未接入 |
+| Agent Service（目标 FastAPI :8000） | `/chat`、`/executions`、`/health`；LangGraph 决策与工具编排；执行状态管理 | 已有内部 API、Agent ORM、只读工具、运行状态、租约、工具记录与 PostgreSQL 检查点；终端用户认证和执行事件接口尚未接入 |
+| RabbitMQ 与 Celery Worker | 持久任务投递、异步消费、重试和结果回写 | 已有 Celery Worker、周期扫描与 RabbitMQ 本地 Compose 配置；仅覆盖只读工具，写操作恢复尚未接入 |
 | Toxiproxy | 在 Agent 工具调用与 Commerce HTTP 服务之间注入延迟、断连、丢包和超时 | 尚未接入 |
 | Commerce Service（目标 :8001） | 商品、客户、订单及退换货 HTTP API，承接业务写操作 | 已有 FastAPI、零售 ORM、Repository、Service 和路由；端口由启动命令决定，当前 README 默认 8000 |
 | PostgreSQL | 目标上分离 Agent 执行数据与商品业务数据 | 当前使用单个 `resolveai` 数据库，已建立 12 张零售表并导入 `benchmark/datasets/db.json` |
@@ -56,4 +56,4 @@ flowchart LR
 
 图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。`benchmark/clients/`、`adapters/`、`datasets/`、`runners/`、`evaluators/` 对应测试输入、适配、运行和评估。`infra/` 对应容器、故障注入和监控配置。
 
-当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的数据模型、状态与路由、只读工具和模型工厂；Agent API、队列、Worker、故障注入和监控仍是 V2 目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。
+当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的内部 API、数据模型、只读工具、Celery Worker、租约和检查点。写工具、外部身份认证、故障注入、执行事件接口和监控仍是后续目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。

@@ -30,7 +30,33 @@ async with CommerceClient(commerce_base_url, authenticated_user_id) as client:
 ```
 
 `context_loader` 可在开始时加载此前的会话消息；调用方须按当前用户和会话限制其范围。
-当前图尚未接入数据库 Checkpoint、执行租约和持久化事件。
+Worker 为每个运行使用 PostgreSQL Checkpointer，并以运行 ID 作为 LangGraph thread ID。
+只读 Commerce 工具在临时故障时受次数和时限约束重试；明确的业务错误不自动重试。
+
+## 异步运行
+
+设置 `.env.example` 中的 Agent 数据库、RabbitMQ、Commerce 地址和内部 API Token。
+Agent 数据库必须与 Commerce 数据库分开。迁移 Agent 表后，Worker 首次执行任务时
+会初始化 LangGraph 的检查点表。以下命令分别在独立终端运行：
+
+```bash
+docker compose -f infra/agent-broker.compose.yml up -d
+uv run --env-file .env uvicorn services.agent_service.app.main:app --host 127.0.0.1 --port 8000
+uv run --env-file .env celery -A services.agent_service.app.workers.tasks:celery_app worker --loglevel=info
+uv run --env-file .env celery -A services.agent_service.app.workers.tasks:celery_app beat --loglevel=info
+```
+
+Commerce Service 应运行在 `COMMERCE_BASE_URL` 指向的地址。`POST /conversations`
+创建会话，`POST /chat` 提交消息并返回执行 ID，`GET /executions/{id}` 查询状态，
+`POST /executions/{id}/cancel` 取消执行。业务接口要求 `X-Agent-Token` 和
+`X-Customer-ID` 请求头；Token 仅供可信内部调用方使用，不能代替面向终端用户的认证。
+同一会话的相同 `idempotency_key` 返回同一运行。API 发布任务失败时，已提交的
+`QUEUED` 记录由 Celery beat 的周期扫描重新投递。Worker 用数据库租约避免重复运行，
+过期租约由扫描器重新投递。当前仅有只读工具，恢复时可以重试中断的工具调用。
+
+运行状态包括 `PENDING`、`QUEUED`、`RUNNING`、`RETRY_WAIT`、`SUCCEEDED`、
+`FAILED`、`CANCELLED` 和 `TIMED_OUT`。检查点保存在 Agent 数据库中；
+`ToolExecution` 记录同一工具调用的尝试次数、结果和错误。
 
 ## 数据库
 
@@ -38,8 +64,8 @@ Agent 表使用独立 PostgreSQL 数据库。设置 `AGENT_DATABASE_URL`，指�
 `DATABASE_URL` 不同的数据库，然后从仓库根目录执行：
 
 ```bash
-uv run alembic -c services/agent_service/alembic.ini upgrade head
-uv run alembic -c services/agent_service/alembic.ini check
+uv run --env-file .env alembic -c services/agent_service/alembic.ini upgrade head
+uv run --env-file .env alembic -c services/agent_service/alembic.ini check
 ```
 
 迁移链从 `a1f3c6d8e920` 开始，独立于 Commerce 迁移链。Agent 模型复用项目已有的
@@ -48,11 +74,10 @@ uv run alembic -c services/agent_service/alembic.ini check
 对一个已升级的独立测试库设置 `AGENT_TEST_DATABASE_URL` 后，可运行：
 
 ```bash
-uv run pytest -q tests/integration/test_agent_orm.py
+uv run pytest -q tests/integration/test_agent_orm.py tests/integration/test_agent_execution.py
 ```
 
-`customer_id` 是 Commerce 的外部标识，无跨库外键。写入 `AgentRun` 时还需在后续
-Service 层校验触发消息的角色为 `USER`；写入 `CustomerMemory` 时应校验来源消息
-所属会话的客户 ID 与记忆的客户 ID 一致。更新时间由 ORM 更新时维护；绕过 ORM 的
-直接 SQL 更新须自行维护 `updated_at`。LangGraph 官方 PostgreSQL Checkpointer
-后续需在 Agent 数据库单独初始化，它不属于本次六张业务表。
+`customer_id` 是 Commerce 的外部标识，无跨库外键。提交运行时，Service 层会创建
+`USER` 触发消息；写入 `CustomerMemory` 时仍须校验来源消息所属会话的客户 ID。
+更新时间由 ORM 更新时维护；绕过 ORM 的直接 SQL 更新须自行维护 `updated_at`。
+LangGraph 检查点表由 Checkpointer 管理，不属于 Agent Alembic 的六张业务表。
