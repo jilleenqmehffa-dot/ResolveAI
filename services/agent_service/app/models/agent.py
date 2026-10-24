@@ -53,10 +53,13 @@ class MemoryType(str, Enum):
 
 class AgentRunStatus(str, Enum):
     PENDING = "PENDING"
+    QUEUED = "QUEUED"
     RUNNING = "RUNNING"
+    RETRY_WAIT = "RETRY_WAIT"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    TIMED_OUT = "TIMED_OUT"
 
 
 class ToolExecutionStatus(str, Enum):
@@ -272,6 +275,10 @@ class AgentRun(Base):
             name="fk_agent_runs_trigger_same_conversation",
             ondelete="RESTRICT",
         ),
+        UniqueConstraint(
+            "conversation_id", "idempotency_key", name="uq_agent_runs_conversation_key"
+        ),
+        Index("ix_agent_runs_status_retry_at", "status", "retry_at"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -291,6 +298,32 @@ class AgentRun(Base):
         nullable=False,
         default=AgentRunStatus.PENDING,
         server_default="PENDING",
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    lease_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    result_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=func.now(),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

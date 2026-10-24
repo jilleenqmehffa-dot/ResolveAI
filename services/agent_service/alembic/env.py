@@ -3,10 +3,20 @@
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import create_engine, pool
 
-from alembic import context
 from services.agent_service.app.models import agent_metadata
+
+CHECKPOINT_TABLES = frozenset(
+    {"checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"}
+)
+
+
+def include_name(name: str | None, type_: str, _parent_names: dict) -> bool:
+    """LangGraph owns its checkpoint tables outside Agent business migrations."""
+    return not (type_ == "table" and name in CHECKPOINT_TABLES)
+
 
 config = context.config
 if config.config_file_name:
@@ -29,6 +39,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=agent_url(),
         target_metadata=agent_metadata,
+        include_name=include_name,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -40,7 +51,11 @@ def run_migrations_online() -> None:
     engine = create_engine(agent_url(), poolclass=pool.NullPool)
     try:
         with engine.connect() as connection:
-            context.configure(connection=connection, target_metadata=agent_metadata)
+            context.configure(
+                connection=connection,
+                target_metadata=agent_metadata,
+                include_name=include_name,
+            )
             with context.begin_transaction():
                 context.run_migrations()
     finally:

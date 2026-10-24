@@ -14,6 +14,9 @@ dependencies = [
     "httpx",
     "langgraph>=1.2.16",
     "langchain-deepseek>=1.1.1",
+    "openai>=3",
+    "celery>=5.6.3",
+    "langgraph-checkpoint-postgres>=3.2.0",
 ]
 
 [dependency-groups]
@@ -25,3 +28,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
