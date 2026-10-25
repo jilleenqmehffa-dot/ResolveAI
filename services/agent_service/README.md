@@ -32,6 +32,8 @@ async with CommerceClient(commerce_base_url, authenticated_user_id) as client:
 `context_loader` 可在开始时加载此前的会话消息；调用方须按当前用户和会话限制其范围。
 Worker 为每个运行使用 PostgreSQL Checkpointer，并以运行 ID 作为 LangGraph thread ID。
 只读 Commerce 工具在临时故障时受次数和时限约束重试；明确的业务错误不自动重试。
+售后单状态通过 `list_after_sales_cases` 和 `get_after_sales_case` 实时读取；
+`CLOSED` 表示流程结束，不单独证明退款已经支付。
 
 ## 异步运行
 

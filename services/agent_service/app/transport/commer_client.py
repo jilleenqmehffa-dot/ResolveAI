@@ -23,7 +23,7 @@ class CommerceClientError(Exception):
 
 
 class CommerceClient:
-    """Expose the five supported read operations through Commerce's public API."""
+    """Expose user-scoped Commerce reads through its public API."""
 
     def __init__(
         self,
@@ -97,7 +97,9 @@ class CommerceClient:
             valid = isinstance(data, dict)
         if not valid:
             raise CommerceClientError(
-                "invalid_response", "Commerce returned an unexpected result", retryable=False
+                "invalid_response",
+                "Commerce returned an unexpected result",
+                retryable=False,
             )
         return data
 
@@ -129,4 +131,23 @@ class CommerceClient:
         return cast(
             dict[str, Any],
             await self._get(f"/orders/{path}", params={"user_id": self.user_id}),
+        )
+
+    async def list_after_sales_cases(self) -> list[dict[str, Any]]:
+        """List the current user's after-sales cases and their current statuses."""
+        return cast(
+            list[dict[str, Any]],
+            await self._get(
+                "/after-sales/", params={"customer_id": self.user_id}, is_list=True
+            ),
+        )
+
+    async def get_after_sales_case(self, case_id: str) -> dict[str, Any]:
+        """Get one current after-sales case owned by this user."""
+        path = self._path_id(case_id)
+        return cast(
+            dict[str, Any],
+            await self._get(
+                f"/after-sales/{path}", params={"customer_id": self.user_id}
+            ),
         )

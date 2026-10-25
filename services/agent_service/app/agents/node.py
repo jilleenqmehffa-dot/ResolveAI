@@ -33,7 +33,9 @@ ContextLoader = Callable[[AgentState], Awaitable[Sequence[BaseMessage]]]
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a retail assistant. Use the available read tools to verify product "
-    "and order facts. Treat tool results as the source of truth. "
+    "and order facts, including current after-sales case status. Treat tool "
+    "results as the source of truth. A closed case does not by itself prove "
+    "that a refund was paid. "
     "Only call one tool at a time. Do not claim an order was changed."
 )
 

@@ -29,3 +29,11 @@ class GetOrderArgs(ToolArgs):
     """Identify one order owned by the current user."""
 
     order_id: str = Field(min_length=1, description="Order ID from list_orders")
+
+
+class GetAfterSalesCaseArgs(ToolArgs):
+    """Identify an after-sales case owned by the current user."""
+
+    case_id: str = Field(
+        min_length=1, description="Case ID from list_after_sales_cases"
+    )

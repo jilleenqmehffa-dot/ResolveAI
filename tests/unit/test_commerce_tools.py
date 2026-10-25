@@ -1,4 +1,4 @@
-"""Agent tools expose only the five supported Commerce reads."""
+"""Agent tools expose user-scoped Commerce reads."""
 
 import httpx
 import pytest
@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from services.agent_service.app.agents.tools import create_commerce_tools
 from services.agent_service.app.agents.tools.schemas import (
     EmptyToolArgs,
+    GetAfterSalesCaseArgs,
     GetItemArgs,
     GetOrderArgs,
     GetProductArgs,
@@ -22,8 +23,14 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
     requests: list[tuple[str, str | None]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
-        requests.append((request.url.path, request.url.params.get("user_id")))
-        if request.url.path in ("/products", "/customers/u1/orders"):
+        requests.append(
+            (
+                request.url.path,
+                request.url.params.get("user_id")
+                or request.url.params.get("customer_id"),
+            )
+        )
+        if request.url.path in ("/products", "/customers/u1/orders", "/after-sales/"):
             return httpx.Response(200, json=[{"id": "one"}])
         return httpx.Response(200, json={"id": "one"})
 
@@ -37,6 +44,8 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "get_item",
             "list_orders",
             "get_order",
+            "list_after_sales_cases",
+            "get_after_sales_case",
         }
         assert tools["list_orders"].args == {}
         assert set(tools["get_order"].args) == {"order_id"}
@@ -46,17 +55,17 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "get_item": GetItemArgs,
             "list_orders": EmptyToolArgs,
             "get_order": GetOrderArgs,
+            "list_after_sales_cases": EmptyToolArgs,
+            "get_after_sales_case": GetAfterSalesCaseArgs,
         }
 
         assert await tools["list_products"].ainvoke({}) == [{"id": "one"}]
-        assert await tools["get_product"].ainvoke({"product_id": "p1"}) == {
-            "id": "one"
-        }
-        assert await tools["get_item"].ainvoke({"item_id": "sku1"}) == {
-            "id": "one"
-        }
+        assert await tools["get_product"].ainvoke({"product_id": "p1"}) == {"id": "one"}
+        assert await tools["get_item"].ainvoke({"item_id": "sku1"}) == {"id": "one"}
         assert await tools["list_orders"].ainvoke({}) == [{"id": "one"}]
-        assert await tools["get_order"].ainvoke({"order_id": "o1"}) == {
+        assert await tools["get_order"].ainvoke({"order_id": "o1"}) == {"id": "one"}
+        assert await tools["list_after_sales_cases"].ainvoke({}) == [{"id": "one"}]
+        assert await tools["get_after_sales_case"].ainvoke({"case_id": "c1"}) == {
             "id": "one"
         }
 
@@ -66,6 +75,8 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         ("/items/sku1", None),
         ("/customers/u1/orders", None),
         ("/orders/o1", "u1"),
+        ("/after-sales/", "u1"),
+        ("/after-sales/c1", "u1"),
     ]
 
 

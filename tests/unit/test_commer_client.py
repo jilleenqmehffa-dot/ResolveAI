@@ -15,9 +15,14 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
 
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(
-            (request.method, request.url.path, request.url.params.get("user_id"))
+            (
+                request.method,
+                request.url.path,
+                request.url.params.get("user_id")
+                or request.url.params.get("customer_id"),
+            )
         )
-        if request.url.path in ("/products", "/customers/u1/orders"):
+        if request.url.path in ("/products", "/customers/u1/orders", "/after-sales/"):
             return httpx.Response(200, json=[])
         return httpx.Response(200, json={"ok": True})
 
@@ -29,6 +34,8 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         assert await client.get_item("sku1") == {"ok": True}
         assert await client.list_orders() == []
         assert await client.get_order("o1") == {"ok": True}
+        assert await client.list_after_sales_cases() == []
+        assert await client.get_after_sales_case("c1") == {"ok": True}
 
     assert requests == [
         ("GET", "/products", None),
@@ -36,6 +43,8 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         ("GET", "/items/sku1", None),
         ("GET", "/customers/u1/orders", None),
         ("GET", "/orders/o1", "u1"),
+        ("GET", "/after-sales/", "u1"),
+        ("GET", "/after-sales/c1", "u1"),
     ]
 
 

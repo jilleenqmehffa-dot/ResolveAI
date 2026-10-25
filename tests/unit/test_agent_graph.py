@@ -75,7 +75,13 @@ async def test_graph_prepares_context_runs_tool_then_returns_to_agent() -> None:
         result = await graph.ainvoke(initial_state())
 
     assert model.bound_tool_names == [
-        "list_products", "get_product", "get_item", "list_orders", "get_order"
+        "list_products",
+        "get_product",
+        "get_item",
+        "list_orders",
+        "get_order",
+        "list_after_sales_cases",
+        "get_after_sales_case",
     ]
     assert [type(item).__name__ for item in model.seen[0][:4]] == [
         "SystemMessage", "HumanMessage", "AIMessage", "HumanMessage"
