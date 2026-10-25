@@ -1,11 +1,11 @@
 """Independent Agent database migration environment."""
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.models import agent_metadata
 
 CHECKPOINT_TABLES = frozenset(
@@ -24,15 +24,7 @@ if config.config_file_name:
 
 
 def agent_url() -> str:
-    url = os.environ.get("AGENT_DATABASE_URL")
-    if not url or not url.startswith("postgresql"):
-        raise RuntimeError(
-            "AGENT_DATABASE_URL must name a separate PostgreSQL database"
-        )
-    commerce_url = os.environ.get("DATABASE_URL")
-    if commerce_url and url == commerce_url:
-        raise RuntimeError("AGENT_DATABASE_URL must differ from DATABASE_URL")
-    return url
+    return get_settings().require_agent_database_url()
 
 
 def run_migrations_offline() -> None:

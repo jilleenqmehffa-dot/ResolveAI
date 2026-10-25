@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from hmac import compare_digest
 from uuid import UUID
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.db.session import get_agent_session_factory
 from services.agent_service.app.execution.lifecycle import cancel_run, submit_run
 from services.agent_service.app.models.agent import (
@@ -44,7 +44,7 @@ class RunResponse(BaseModel):
 def _caller(
     x_agent_token: str = Header(), x_customer_id: str = Header(min_length=1)
 ) -> str:
-    expected = os.environ.get("AGENT_INTERNAL_TOKEN")
+    expected = get_settings().agent_internal_token
     if not expected:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Agent API token is not configured"
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
                 session.execute(text("SELECT 1"))
             with celery_app.connection() as connection:
                 connection.ensure_connection(max_retries=0)
-            commerce_url = os.environ.get("COMMERCE_BASE_URL", "http://localhost:8001")
+            commerce_url = get_settings().commerce_base_url
             response = httpx.get(f"{commerce_url.rstrip('/')}/health", timeout=2.0)
             response.raise_for_status()
         except (
@@ -114,9 +114,7 @@ def create_app() -> FastAPI:
                 customer_id=customer_id,
                 content=request.message,
                 idempotency_key=request.idempotency_key,
-                total_timeout_seconds=float(
-                    os.environ.get("AGENT_RUN_TIMEOUT_SECONDS", "120")
-                ),
+                total_timeout_seconds=get_settings().agent_run_timeout_seconds,
             )
         except LookupError as exc:
             raise HTTPException(

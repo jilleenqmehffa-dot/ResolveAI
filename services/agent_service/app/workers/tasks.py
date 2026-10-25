@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -14,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from services.agent_service.app.agents.graph import create_agent_graph
+from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.db.session import get_agent_session_factory
 from services.agent_service.app.execution.checkpoints import (
     checkpoint_config,
@@ -41,7 +41,7 @@ from services.agent_service.app.transport.commer_client import (
 
 celery_app = Celery(
     "resolveai_agent",
-    broker=os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost//"),
+    broker=get_settings().rabbitmq_url,
 )
 celery_app.conf.update(
     task_acks_late=True,
@@ -57,11 +57,12 @@ celery_app.conf.update(
 
 
 def _policy() -> RecoveryPolicy:
+    settings = get_settings()
     return RecoveryPolicy(
-        max_attempts=int(os.environ.get("AGENT_MAX_ATTEMPTS", "3")),
-        total_timeout_seconds=float(os.environ.get("AGENT_RUN_TIMEOUT_SECONDS", "120")),
-        base_retry_delay_seconds=float(os.environ.get("AGENT_RETRY_BASE_SECONDS", "1")),
-        max_retry_delay_seconds=float(os.environ.get("AGENT_RETRY_MAX_SECONDS", "10")),
+        max_attempts=settings.agent_max_attempts,
+        total_timeout_seconds=settings.agent_run_timeout_seconds,
+        base_retry_delay_seconds=settings.agent_retry_base_seconds,
+        max_retry_delay_seconds=settings.agent_retry_max_seconds,
     )
 
 
@@ -129,7 +130,7 @@ async def _execute_graph(
     config["configurable"].update(
         {"execution_manager": manager, "tool_invocations": store}
     )
-    commerce_url = os.environ.get("COMMERCE_BASE_URL", "http://localhost:8001")
+    commerce_url = get_settings().commerce_base_url
     async with (
         open_checkpointer() as saver,
         CommerceClient(commerce_url, claim.customer_id) as client,

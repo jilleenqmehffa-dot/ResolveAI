@@ -6,10 +6,11 @@ import pytest
 from langchain_deepseek import ChatDeepSeek
 
 from services.agent_service.app.agents.llm import factory
+from services.agent_service.app.core import config
 
 
 def test_factory_locates_repository_root() -> None:
-    assert factory.PROJECT_ROOT == Path(__file__).resolve().parents[2]
+    assert config.PROJECT_ROOT == Path(__file__).resolve().parents[2]
 
 
 def test_factory_uses_environment_key_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,9 +25,9 @@ def test_factory_uses_environment_key_and_model(monkeypatch: pytest.MonkeyPatch)
     assert model.max_retries == 0
 
 
-def test_factory_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_factory_requires_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.setattr(factory, "dotenv_values", lambda _path: {})
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
 
     with pytest.raises(ValueError, match="DEEPSEEK_API_KEY"):
         factory.create_deepseek_model()
@@ -37,7 +38,7 @@ def test_factory_reads_repository_env_file(
 ) -> None:
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
-    monkeypatch.setattr(factory, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
     (tmp_path / ".env").write_text(
         "DEEPSEEK_API_KEY=file-key\nDEEPSEEK_MODEL=deepseek-flash\n"
     )

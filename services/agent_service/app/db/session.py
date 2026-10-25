@@ -1,20 +1,16 @@
 """Connections to the Agent database; never use the Commerce session factory."""
 
-import os
 from functools import lru_cache
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from services.agent_service.app.core.config import get_settings
+
 
 def agent_database_url() -> str:
-    url = os.environ.get("AGENT_DATABASE_URL", "")
-    if not url.startswith("postgresql"):
-        raise RuntimeError("AGENT_DATABASE_URL must point to PostgreSQL")
-    if url == os.environ.get("DATABASE_URL"):
-        raise RuntimeError("Agent and Commerce databases must differ")
-    return url
+    return get_settings().require_agent_database_url()
 
 
 @lru_cache
