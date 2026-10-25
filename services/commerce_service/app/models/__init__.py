@@ -1,5 +1,6 @@
 """Database models and shared metadata."""
 
+from services.commerce_service.app.models.after_sales import AfterSalesCase
 from services.commerce_service.app.models.base import Base
 from services.commerce_service.app.models.retail import (
     FulfillmentItem,
@@ -17,6 +18,7 @@ from services.commerce_service.app.models.retail import (
 )
 
 __all__ = [
+    "AfterSalesCase",
     "Base",
     "FulfillmentItem",
     "FulfillmentTracking",

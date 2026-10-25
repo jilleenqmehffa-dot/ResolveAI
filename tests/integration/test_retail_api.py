@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from services.commerce_service.app.db.session import get_session
 from services.commerce_service.app.main import create_app
 from services.commerce_service.app.models import (
+    AfterSalesCase,
     Base,
     Order,
     OrderItem,
@@ -239,3 +240,68 @@ async def test_exchange_route_records_request(client_and_sessions) -> None:
             {"position": 0, "old_item_id": "sku-a", "new_item_id": "sku-b"}
         ]
         assert exchanged.json()["payment_history"][-1]["amount"] == "5.00"
+
+
+@pytest.mark.asyncio
+async def test_after_sales_case_lifecycle_and_customer_scope(
+    client_and_sessions,
+) -> None:
+    client, sessions = client_and_sessions
+    async with client:
+        foreign_order = await client.post(
+            "/after-sales/",
+            json={
+                "order_id": "delivered",
+                "customer_id": "u2",
+                "case_type": "RETURN_REFUND",
+                "reason": "Wrong size",
+            },
+        )
+        assert foreign_order.status_code == 404
+
+        created = await client.post(
+            "/after-sales/",
+            json={
+                "order_id": "delivered",
+                "customer_id": "u1",
+                "case_type": "RETURN_REFUND",
+                "reason": "Wrong size",
+            },
+        )
+        assert created.status_code == 201
+        case = created.json()
+        case_id = case["case_id"]
+        assert case["status"] == "PROCESSING"
+        assert case["resolution"] is None
+        assert case["closed_at"] is None
+
+        assert (
+            await client.get(f"/after-sales/{case_id}", params={"customer_id": "u2"})
+        ).status_code == 404
+        listed = await client.get("/after-sales/", params={"customer_id": "u1"})
+        assert [item["case_id"] for item in listed.json()] == [case_id]
+
+        wrong_outcome = await client.post(
+            f"/after-sales/{case_id}/close",
+            json={"customer_id": "u1", "resolution": "EXCHANGED"},
+        )
+        assert wrong_outcome.status_code == 422
+        closed = await client.post(
+            f"/after-sales/{case_id}/close",
+            json={"customer_id": "u1", "resolution": "REJECTED"},
+        )
+        assert closed.status_code == 200
+        assert closed.json()["status"] == "CLOSED"
+        assert closed.json()["resolution"] == "REJECTED"
+        assert closed.json()["closed_at"] is not None
+        assert (
+            await client.post(
+                f"/after-sales/{case_id}/close",
+                json={"customer_id": "u1", "resolution": "REFUNDED"},
+            )
+        ).status_code == 409
+
+    with sessions() as session:
+        assert session.query(AfterSalesCase).count() == 1
+        assert session.get(Order, "delivered").status == "delivered"
+        assert len(session.get(Order, "delivered").payment_history) == 1
