@@ -1,14 +1,19 @@
 """Create, inspect, and close customer-owned after-sales cases."""
 
 from datetime import UTC, datetime
+from hmac import compare_digest
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from services.commerce_service.app.api.dependencies import SessionDep
+from services.commerce_service.app.api.dependencies import (
+    AfterSalesServiceDep,
+    SessionDep,
+)
+from services.commerce_service.app.core.config import get_settings
 from services.commerce_service.app.core.exceptions import (
     ConflictError,
     NotFoundError,
@@ -48,6 +53,19 @@ class CaseResponse(BaseModel):
     reason: str
     created_at: datetime
     closed_at: datetime | None
+
+
+def _trusted_agent_customer(
+    x_agent_token: str = Header(), x_customer_id: str = Header(min_length=1)
+) -> str:
+    expected = get_settings().agent_internal_token
+    if not expected:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Agent token is not configured"
+        )
+    if not compare_digest(x_agent_token, expected):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid Agent token")
+    return x_customer_id
 
 
 def _owned_case(session: SessionDep, case_id: UUID, customer_id: str) -> AfterSalesCase:
@@ -123,3 +141,12 @@ def close_case(
     case.closed_at = datetime.now(UTC)
     session.flush()
     return case
+
+
+@router.put("/{case_id}/resolution/refunded", response_model=CaseResponse)
+def mark_case_refunded(
+    case_id: UUID,
+    service: AfterSalesServiceDep,
+    customer_id: str = Depends(_trusted_agent_customer),
+) -> AfterSalesCase:
+    return service.mark_refunded(case_id, customer_id)

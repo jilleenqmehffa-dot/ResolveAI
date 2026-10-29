@@ -1,5 +1,6 @@
 """HTTP routes use the retail service and keep order changes transactional."""
 
+from datetime import datetime
 from decimal import Decimal
 
 import httpx
@@ -7,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
+from services.commerce_service.app.core.config import get_settings
 from services.commerce_service.app.db.session import get_session
 from services.commerce_service.app.main import create_app
 from services.commerce_service.app.models import (
@@ -23,7 +25,9 @@ from services.commerce_service.app.models import (
 
 
 @pytest.fixture
-def client_and_sessions(tmp_path):
+def client_and_sessions(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "test-agent-token")
+    get_settings.cache_clear()
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'api.sqlite'}")
 
     @event.listens_for(engine, "connect")
@@ -116,6 +120,7 @@ def client_and_sessions(tmp_path):
         sessions,
     )
     engine.dispose()
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio
@@ -303,5 +308,85 @@ async def test_after_sales_case_lifecycle_and_customer_scope(
 
     with sessions() as session:
         assert session.query(AfterSalesCase).count() == 1
+        assert session.get(Order, "delivered").status == "delivered"
+        assert len(session.get(Order, "delivered").payment_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_refund_case_transition_is_owned_idempotent_and_does_not_pay(
+    client_and_sessions,
+) -> None:
+    client, sessions = client_and_sessions
+    async with client:
+        refund = await client.post(
+            "/after-sales/",
+            json={
+                "order_id": "delivered",
+                "customer_id": "u1",
+                "case_type": "REFUND_ONLY",
+                "reason": "Damaged item",
+            },
+        )
+        assert refund.status_code == 201
+        case_id = refund.json()["case_id"]
+        url = f"/after-sales/{case_id}/resolution/refunded"
+
+        def headers(
+            customer_id: str, token: str = "test-agent-token"
+        ) -> dict[str, str]:
+            return {"X-Agent-Token": token, "X-Customer-ID": customer_id}
+
+        assert (await client.put(url, headers=headers("u1", "bad"))).status_code == 401
+        assert (await client.put(url, headers=headers("u2"))).status_code == 404
+        first = await client.put(url, headers=headers("u1"))
+        second = await client.put(url, headers=headers("u1"))
+        assert first.status_code == second.status_code == 200
+        assert first.json()["status"] == "CLOSED"
+        assert first.json()["resolution"] == "REFUNDED"
+        assert datetime.fromisoformat(first.json()["closed_at"]).replace(
+            tzinfo=None
+        ) == datetime.fromisoformat(second.json()["closed_at"]).replace(tzinfo=None)
+
+        exchange = await client.post(
+            "/after-sales/",
+            json={
+                "order_id": "delivered",
+                "customer_id": "u1",
+                "case_type": "EXCHANGE",
+                "reason": "Different size",
+            },
+        )
+        assert exchange.status_code == 201
+        assert (
+            await client.put(
+                f"/after-sales/{exchange.json()['case_id']}/resolution/refunded",
+                headers=headers("u1"),
+            )
+        ).status_code == 422
+
+        rejected = await client.post(
+            "/after-sales/",
+            json={
+                "order_id": "delivered",
+                "customer_id": "u1",
+                "case_type": "RETURN_REFUND",
+                "reason": "Wrong size",
+            },
+        )
+        rejected_id = rejected.json()["case_id"]
+        assert (
+            await client.post(
+                f"/after-sales/{rejected_id}/close",
+                json={"customer_id": "u1", "resolution": "REJECTED"},
+            )
+        ).status_code == 200
+        assert (
+            await client.put(
+                f"/after-sales/{rejected_id}/resolution/refunded",
+                headers=headers("u1"),
+            )
+        ).status_code == 409
+
+    with sessions() as session:
         assert session.get(Order, "delivered").status == "delivered"
         assert len(session.get(Order, "delivered").payment_history) == 1

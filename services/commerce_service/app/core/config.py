@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
     database_url: str
+    agent_internal_token: str | None = None
 
 
 @lru_cache
