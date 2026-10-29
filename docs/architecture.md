@@ -12,13 +12,13 @@
 
 | 组件 | 目标职责 | 当前工作区状态 |
 | --- | --- | --- |
-| Agent Service（目标 FastAPI :8000） | `/chat`、`/executions`、`/health`；LangGraph 决策与工具编排；执行状态管理 | 已有内部 API、Agent ORM、只读工具、运行状态、租约、工具记录与 PostgreSQL 检查点；终端用户认证和执行事件接口尚未接入 |
-| RabbitMQ 与 Celery Worker | 持久任务投递、异步消费、重试和结果回写 | 已有 Celery Worker、周期扫描与 RabbitMQ 本地 Compose 配置；仅覆盖只读工具，写操作恢复尚未接入 |
-| Toxiproxy | 在 Agent 工具调用与 Commerce HTTP 服务之间注入延迟、断连、丢包和超时 | 尚未接入 |
+| Agent Service（目标 FastAPI :8000） | `/chat`、`/executions`、`/health`；LangGraph 决策与工具编排；执行状态管理 | 已有内部 API、Agent ORM、只读工具、售后状态写工具、运行状态、租约、工具记录与 PostgreSQL 检查点；终端用户认证和执行事件接口尚未接入 |
+| RabbitMQ 与 Celery Worker | 持久任务投递、异步消费、重试和结果回写 | 已有 Celery Worker、周期扫描与 RabbitMQ 本地 Compose 配置；售后状态写工具有结果核验，其他业务写工具尚未接入 |
+| Toxiproxy | 在 Agent 工具调用与 Commerce HTTP 服务之间注入延迟、断连、丢包和超时 | Compose 已配置 Agent→Commerce 代理，并提供延迟、超时、断连和恢复命令；端到端故障验收仍需运行 |
 | Commerce Service（目标 :8001） | 商品、客户、订单及退换货 HTTP API，承接业务写操作 | 已有 FastAPI、零售 ORM、Repository、Service 和路由；端口由启动命令决定，当前 README 默认 8000 |
-| PostgreSQL | 目标上分离 Agent 执行数据与商品业务数据 | 当前使用单个 `resolveai` 数据库，已建立 12 张零售表并导入 `benchmark/datasets/db.json` |
-| Benchmark 数据与 runner | 提供商品测试数据、任务定义和导入入口 | 已有 `db.json`、`tasks.json`、`split_tasks.json` 和 JSON 导入 runner；图片中的压测客户端尚未实现 |
-| 可选观测工具 | Locust、Flower、Prometheus/Grafana、pgAdmin 与 Toxiproxy Dashboard | 图片中的规划组件，仓库当前没有对应配置 |
+| PostgreSQL | 目标上分离 Agent 执行数据与商品业务数据 | 本地 Compose 配置在同一实例中创建 `resolveai` 与 `resolveai_agent` 两个数据库，并分别运行迁移 |
+| Benchmark 数据与 runner | 提供商品测试数据、任务定义和导入入口 | 已有 `db.json`、`tasks.json`、`split_tasks.json`、JSON 导入 runner 与并发提交客户端；动作正确率评估器尚未实现 |
+| 可选观测工具 | Locust、Flower、Prometheus/Grafana、pgAdmin 与 Toxiproxy Dashboard | 已有 Flower、Prometheus、Grafana 和 Blackbox Exporter 的可选 Compose 配置；Locust、pgAdmin 与 Toxiproxy Dashboard 尚未接入 |
 
 ## 2. 目标请求链路
 
@@ -50,10 +50,10 @@ flowchart LR
 
 **Commerce Service** 拥有商品、规格、用户、付款方式、订单及售后数据。Agent 的 Commerce Tool 只能调用其公开 HTTP API；业务规则、数据库事务及价格结算仍由 Commerce Service 决定。当前实现可见 `services/commerce_service/app/`，业务模型位于 `models/retail.py`，JSON 数据导入入口位于 `benchmark/runners/import_retail_json.py`。
 
-**目标数据库隔离** 是同一 PostgreSQL 实例中的两个逻辑数据库：Agent 执行数据与 Commerce 业务数据分别迁移、授权和备份。现有 `resolveai` 数据库属于当前阶段；引入独立库时需要明确迁移与连接配置，不能仅修改数据库名称。
+**目标数据库隔离** 是同一 PostgreSQL 实例中的两个逻辑数据库：Agent 执行数据与 Commerce 业务数据分别迁移、授权和备份。本地 Compose 已创建两个数据库并分别迁移；生产环境的授权和备份仍需按部署环境配置。
 
 ## 4. 目录规划与当前差距
 
 图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。`benchmark/clients/`、`adapters/`、`datasets/`、`runners/`、`evaluators/` 对应测试输入、适配、运行和评估。`infra/` 对应容器、故障注入和监控配置。
 
-当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的内部 API、数据模型、只读工具、Celery Worker、租约和检查点。写工具、外部身份认证、故障注入、执行事件接口和监控仍是后续目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。
+当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的内部 API、数据模型、只读工具、一个售后状态写工具、Celery Worker、租约和检查点。`infra/` 中有 Toxiproxy 故障注入配置与基础监控配置；更完整的业务写工具、外部身份认证、执行事件接口、业务指标和端到端故障验收仍是后续目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。

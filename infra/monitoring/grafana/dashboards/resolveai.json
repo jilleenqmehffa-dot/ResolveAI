@@ -1,0 +1,63 @@
+{
+  "uid": "resolveai-overview",
+  "title": "ResolveAI Overview",
+  "tags": ["resolveai"],
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "15s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Agent API ready",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "probe_success{job=\"http_services\",instance=\"http://agent-api:8000/ready\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "Down"}, "1": {"text": "Ready"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}}
+    },
+    {
+      "id": 2,
+      "title": "Commerce API",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "probe_success{job=\"http_services\",instance=\"http://commerce:8000/health\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "Down"}, "1": {"text": "Up"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}}
+    },
+    {
+      "id": 3,
+      "title": "Agent to Commerce",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "probe_success{job=\"http_services\",instance=\"http://toxiproxy:18080/health\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "Down"}, "1": {"text": "Up"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}}
+    },
+    {
+      "id": 4,
+      "title": "Online workers",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "sum(flower_worker_online)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}}
+    },
+    {
+      "id": 5,
+      "title": "Celery task events",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "sum by (type) (rate(flower_events_total[5m]))", "legendFormat": "{{type}}", "refId": "A"}]
+    },
+    {
+      "id": 6,
+      "title": "RabbitMQ queued messages",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "sum(rabbitmq_queue_messages_ready)", "legendFormat": "ready", "refId": "A"}]
+    }
+  ]
+}

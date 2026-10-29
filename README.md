@@ -1,5 +1,30 @@
 # ResolveAI
 
+## Docker Compose 启动完整服务
+
+在仓库根目录复制 `.env.example` 为 `.env`，把 `AGENT_INTERNAL_TOKEN` 改成自己的随机值，
+并配置有效的 `DEEPSEEK_API_KEY`。Compose 使用容器内部地址连接数据库、RabbitMQ 和
+Commerce；本机开发用的 `.env` 地址不会覆盖这些容器内部地址。可通过
+`POSTGRES_PASSWORD` 和 `RABBITMQ_PASSWORD` 分别设置数据库与消息队列密码；
+本地默认值均为 `resolveai`。
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml up --build -d
+docker compose --env-file .env -f infra/docker-compose.yml --profile seed run --rm commerce-seed
+```
+
+第一条命令启动 PostgreSQL、RabbitMQ、Commerce API、Toxiproxy、Agent API、
+Celery Worker 和 Celery beat，并在 API 启动前执行两个数据库的 Alembic 迁移。Commerce API 地址为
+`http://127.0.0.1:8001`，Agent API 地址为 `http://127.0.0.1:8000`。
+第二条命令按需导入零售样例数据；已有业务数据时无需重复导入。两个数据库由同一
+PostgreSQL 容器承载，但分别使用 `resolveai` 和 `resolveai_agent` 数据库。
+数据库和 RabbitMQ 数据保存在 Docker 卷中。若已有 PostgreSQL 卷，首次初始化脚本
+不会再次创建 Agent 数据库，需要先确保 `resolveai_agent` 存在。
+
+Agent 到 Commerce 的 HTTP 请求默认经过 Toxiproxy，未启用故障时正常透传。
+故障注入和监控的操作方法见 [基础设施说明](infra/README.md)。
+批量并发提交 Bench 场景的方法见 [Bench 并发客户端](benchmark/clients/README.md)。
+
 ## 启动 API
 
 安装依赖：

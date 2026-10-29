@@ -1,0 +1,216 @@
+name: resolveai
+
+x-agent-env: &agent-env
+  AGENT_DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai_agent
+  DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
+  RABBITMQ_URL: amqp://resolveai:${RABBITMQ_PASSWORD:-resolveai}@rabbitmq:5672//
+  COMMERCE_BASE_URL: http://toxiproxy:18080
+  AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN in .env}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+  AGENT_MAX_ATTEMPTS: ${AGENT_MAX_ATTEMPTS:-3}
+  AGENT_RUN_TIMEOUT_SECONDS: ${AGENT_RUN_TIMEOUT_SECONDS:-120}
+
+x-agent-build: &agent-build
+  context: ..
+  dockerfile: services/agent_service/Dockerfile
+
+x-commerce-build: &commerce-build
+  context: ..
+  dockerfile: services/commerce_service/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: resolveai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-resolveai}
+      POSTGRES_DB: resolveai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/10-agent-db.sql:/docker-entrypoint-initdb.d/10-agent-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resolveai -d resolveai && pg_isready -U resolveai -d resolveai_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: resolveai
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-resolveai}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  commerce-migrate:
+    build: *commerce-build
+    command: ["alembic", "-c", "services/commerce_service/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  agent-migrate:
+    build: *agent-build
+    command: ["alembic", "-c", "services/agent_service/alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *agent-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  commerce:
+    build: *commerce-build
+    environment:
+      DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN in .env}
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      commerce-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.13.0
+    command: ["-host=0.0.0.0", "-config=/etc/toxiproxy/proxies.json", "-proxy-metrics", "-runtime-metrics"]
+    volumes:
+      - ./toxiproxy/proxies.json:/etc/toxiproxy/proxies.json:ro
+    ports:
+      - "127.0.0.1:8474:8474"
+    depends_on:
+      commerce:
+        condition: service_healthy
+    restart: unless-stopped
+
+  agent-api:
+    build: *agent-build
+    environment:
+      <<: *agent-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      agent-migrate:
+        condition: service_completed_successfully
+      toxiproxy:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  agent-worker:
+    build: *agent-build
+    command: ["celery", "-A", "services.agent_service.app.workers.tasks:celery_app", "worker", "--loglevel=info", "-E"]
+    environment:
+      <<: *agent-env
+    depends_on:
+      agent-migrate:
+        condition: service_completed_successfully
+      toxiproxy:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  agent-beat:
+    build: *agent-build
+    command: ["celery", "-A", "services.agent_service.app.workers.tasks:celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    environment:
+      <<: *agent-env
+    depends_on:
+      agent-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  commerce-seed:
+    profiles: ["seed"]
+    build: *commerce-build
+    command: ["python", "-m", "benchmark.runners.import_retail_json"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
+    depends_on:
+      commerce-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  flower:
+    profiles: ["monitoring"]
+    image: mher/flower:2.2.0
+    command: ["celery", "--broker=amqp://resolveai:${RABBITMQ_PASSWORD:-resolveai}@rabbitmq:5672//", "flower", "--port=5555"]
+    environment:
+      FLOWER_BASIC_AUTH: ${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-resolveai}
+      FLOWER_BROKER_API: http://resolveai:${RABBITMQ_PASSWORD:-resolveai}@rabbitmq:15672/api/
+    ports:
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  blackbox:
+    profiles: ["monitoring"]
+    image: prom/blackbox-exporter:v0.28.0
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    restart: unless-stopped
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.14.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - flower
+      - blackbox
+      - rabbitmq
+      - toxiproxy
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:12.4.12
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-resolveai}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
