@@ -33,6 +33,22 @@ OLD_TABLES = (
     "users",
     "products",
 )
+RETAIL_TABLES = frozenset(
+    {
+        "products",
+        "product_variants",
+        "users",
+        "user_payment_methods",
+        "user_order_links",
+        "orders",
+        "order_items",
+        "order_fulfillment_tracking",
+        "order_fulfillment_items",
+        "order_payments",
+        "order_exchange_items",
+        "order_return_items",
+    }
+)
 ADDRESS_FIELDS = ("address1", "address2", "city", "state", "country", "zip")
 
 
@@ -196,8 +212,13 @@ def upgrade() -> None:
 
     for name in OLD_TABLES:
         op.drop_table(name)
-    Base.metadata.create_all(bind)
-    for table in Base.metadata.sorted_tables:
+    # This revision predates after-sales and Agent tables. Limit it to the
+    # retail schema it owns, regardless of later additions to Base.metadata.
+    retail_tables = [
+        table for table in Base.metadata.sorted_tables if table.name in RETAIL_TABLES
+    ]
+    Base.metadata.create_all(bind, tables=retail_tables)
+    for table in retail_tables:
         rows = new[table.name]
         if rows:
             bind.execute(table.insert(), rows)
