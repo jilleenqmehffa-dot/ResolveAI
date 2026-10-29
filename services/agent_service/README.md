@@ -30,8 +30,15 @@ async with CommerceClient(commerce_base_url, authenticated_user_id) as client:
 ```
 
 `context_loader` 可在开始时加载此前的会话消息；调用方须按当前用户和会话限制其范围。
+Worker 按会话内 `Message.seq` 读取本轮触发消息之前最近 10 轮已完成的问答；
+`AgentRun.response_message_id` 将成功运行与客服答复关联，未完成的并发提问不进入历史。
 Worker 为每个运行使用 PostgreSQL Checkpointer，并以运行 ID 作为 LangGraph thread ID。
 只读 Commerce 工具在临时故障时受次数和时限约束重试；明确的业务错误不自动重试。
+`mark_after_sales_refunded` 可把当前客户的退款类售后单结案为 `CLOSED`、`REFUNDED`；
+Commerce Service 通过 Repository 和 Service 在事务内执行状态转换，重复请求返回同一结果。
+新写接口要求 `X-Agent-Token` 和 `X-Customer-ID`；Agent Worker 使用配置中的
+`AGENT_INTERNAL_TOKEN` 与已认证的客户 ID 发送这两个请求头。
+这个操作不发起资金退款。写请求结果不明时，Worker 先重新查询售后单状态，再决定是否重试。
 售后单状态通过 `list_after_sales_cases` 和 `get_after_sales_case` 实时读取；
 `CLOSED` 表示流程结束，不单独证明退款已经支付。
 
@@ -54,7 +61,7 @@ Commerce Service 应运行在 `COMMERCE_BASE_URL` 指向的地址。`POST /conve
 `X-Customer-ID` 请求头；Token 仅供可信内部调用方使用，不能代替面向终端用户的认证。
 同一会话的相同 `idempotency_key` 返回同一运行。API 发布任务失败时，已提交的
 `QUEUED` 记录由 Celery beat 的周期扫描重新投递。Worker 用数据库租约避免重复运行，
-过期租约由扫描器重新投递。当前仅有只读工具，恢复时可以重试中断的工具调用。
+过期租约由扫描器重新投递。中断的只读工具可重试；中断的退款结果写工具必须先核验状态。
 
 运行状态包括 `PENDING`、`QUEUED`、`RUNNING`、`RETRY_WAIT`、`SUCCEEDED`、
 `FAILED`、`CANCELLED` 和 `TIMED_OUT`。检查点保存在 Agent 数据库中；

@@ -1,4 +1,4 @@
-"""Read-only LangChain tools backed by one user-scoped Commerce client."""
+"""LangChain tools backed by one user-scoped Commerce client."""
 
 from typing import Any
 
@@ -56,6 +56,11 @@ def create_commerce_tools(client: CommerceClient) -> list[BaseTool]:
         """Get one after-sales case's type, status, and final resolution by case ID."""
         return await client.get_after_sales_case(case_id)
 
+    @tool(args_schema=GetAfterSalesCaseArgs)
+    async def mark_after_sales_refunded(case_id: str) -> dict[str, Any]:
+        """Close a refund-type after-sales case as REFUNDED; does not issue or prove payment."""
+        return await client.mark_after_sales_refunded(case_id)
+
     return [
         list_products,
         get_product,
@@ -64,4 +69,5 @@ def create_commerce_tools(client: CommerceClient) -> list[BaseTool]:
         get_order,
         list_after_sales_cases,
         get_after_sales_case,
+        mark_after_sales_refunded,
     ]

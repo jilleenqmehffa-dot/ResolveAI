@@ -30,6 +30,7 @@ class CommerceClient:
         base_url: str,
         user_id: str,
         *,
+        agent_token: str | None = None,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -38,6 +39,7 @@ class CommerceClient:
         if not user_id.strip():
             raise ValueError("user_id must not be empty")
         self.user_id = user_id
+        self.agent_token = agent_token
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"), timeout=timeout, transport=transport
         )
@@ -55,11 +57,20 @@ class CommerceClient:
     def _path_id(value: str) -> str:
         return quote(value, safe="")
 
-    async def _get(
-        self, path: str, *, params: dict[str, str] | None = None, is_list: bool = False
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        is_list: bool = False,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         try:
-            response = await self._client.get(path, params=params)
+            response = await self._client.request(
+                method, path, params=params, json=json_body, headers=headers
+            )
         except httpx.RequestError as exc:
             raise CommerceClientError(
                 "transport_error", "Commerce service is unavailable", retryable=True
@@ -102,6 +113,11 @@ class CommerceClient:
                 retryable=False,
             )
         return data
+
+    async def _get(
+        self, path: str, *, params: dict[str, str] | None = None, is_list: bool = False
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return await self._request("GET", path, params=params, is_list=is_list)
 
     async def list_products(self) -> list[dict[str, Any]]:
         """List product IDs and names for product discovery."""
@@ -151,3 +167,27 @@ class CommerceClient:
                 f"/after-sales/{path}", params={"customer_id": self.user_id}
             ),
         )
+
+    async def mark_after_sales_refunded(self, case_id: str) -> dict[str, Any]:
+        """Set a refund case's resolution to REFUNDED; no payment is issued."""
+        if not self.agent_token:
+            raise RuntimeError("Agent token is required for Commerce writes")
+        path = self._path_id(case_id)
+        data = cast(
+            dict[str, Any],
+            await self._request(
+                "PUT",
+                f"/after-sales/{path}/resolution/refunded",
+                headers={
+                    "X-Agent-Token": self.agent_token,
+                    "X-Customer-ID": self.user_id,
+                },
+            ),
+        )
+        if data.get("status") != "CLOSED" or data.get("resolution") != "REFUNDED":
+            raise CommerceClientError(
+                "invalid_response",
+                "Commerce did not confirm the refunded case outcome",
+                retryable=False,
+            )
+        return data

@@ -60,11 +60,17 @@ async def test_graph_prepares_context_runs_tool_then_returns_to_agent() -> None:
         return httpx.Response(200, json={"product_id": "p1", "variants": []})
 
     async def load_history(_state: AgentState) -> list[BaseMessage]:
-        return [HumanMessage(content="Earlier question"), AIMessage(content="Earlier answer")]
+        return [
+            HumanMessage(content="Earlier question"),
+            AIMessage(content="Earlier answer"),
+        ]
 
     model = ScriptedModel(
         [
-            AIMessage(content="", tool_calls=[call("c1", "get_product", {"product_id": " p1 "})]),
+            AIMessage(
+                content="",
+                tool_calls=[call("c1", "get_product", {"product_id": " p1 "})],
+            ),
             AIMessage(content="Product p1 is available"),
         ]
     )
@@ -82,15 +88,22 @@ async def test_graph_prepares_context_runs_tool_then_returns_to_agent() -> None:
         "get_order",
         "list_after_sales_cases",
         "get_after_sales_case",
+        "mark_after_sales_refunded",
     ]
     assert [type(item).__name__ for item in model.seen[0][:4]] == [
-        "SystemMessage", "HumanMessage", "AIMessage", "HumanMessage"
+        "SystemMessage",
+        "HumanMessage",
+        "AIMessage",
+        "HumanMessage",
     ]
     assert requests == ["/products/p1"]
-    tool_result = next(item for item in result["messages"] if isinstance(item, ToolMessage))
+    tool_result = next(
+        item for item in result["messages"] if isinstance(item, ToolMessage)
+    )
     assert tool_result.tool_call_id == "c1"
     assert json.loads(tool_result.content) == {
-        "ok": True, "data": {"product_id": "p1", "variants": []}
+        "ok": True,
+        "data": {"product_id": "p1", "variants": []},
     }
     assert result["tool_call_count"] == 1
     assert result["messages"][-1].content == "Product p1 is available"
@@ -113,7 +126,10 @@ async def test_guard_rejects_bad_call_without_http(name: str, args: dict) -> Non
         return httpx.Response(200, json={})
 
     model = ScriptedModel(
-        [AIMessage(content="", tool_calls=[call("c1", name, args)]), AIMessage(content="Cannot do that")]
+        [
+            AIMessage(content="", tool_calls=[call("c1", name, args)]),
+            AIMessage(content="Cannot do that"),
+        ]
     )
     async with CommerceClient(
         "http://commerce.test", "u1", transport=httpx.MockTransport(respond)
@@ -122,7 +138,9 @@ async def test_guard_rejects_bad_call_without_http(name: str, args: dict) -> Non
 
     assert requests == []
     assert result["tool_call_count"] == 0
-    tool_result = next(item for item in result["messages"] if isinstance(item, ToolMessage))
+    tool_result = next(
+        item for item in result["messages"] if isinstance(item, ToolMessage)
+    )
     assert tool_result.tool_call_id == "c1"
     assert json.loads(tool_result.content)["error"]["code"] == "guard_rejected"
 
@@ -139,7 +157,10 @@ async def test_guard_rejects_all_calls_in_one_message() -> None:
         [
             AIMessage(
                 content="",
-                tool_calls=[call("c1", "list_products", {}), call("c2", "list_orders", {})],
+                tool_calls=[
+                    call("c1", "list_products", {}),
+                    call("c2", "list_orders", {}),
+                ],
             ),
             AIMessage(content="I will try one at a time"),
         ]
@@ -151,9 +172,11 @@ async def test_guard_rejects_all_calls_in_one_message() -> None:
 
     assert requests == []
     assert result["tool_call_count"] == 0
-    assert [item.tool_call_id for item in result["messages"] if isinstance(item, ToolMessage)] == [
-        "c1", "c2"
-    ]
+    assert [
+        item.tool_call_id
+        for item in result["messages"]
+        if isinstance(item, ToolMessage)
+    ] == ["c1", "c2"]
 
 
 @pytest.mark.asyncio
@@ -174,21 +197,25 @@ async def test_guard_enforces_tool_call_limit() -> None:
     async with CommerceClient(
         "http://commerce.test", "u1", transport=httpx.MockTransport(respond)
     ) as client:
-        result = await create_agent_graph(client, model=model, max_tool_calls=1).ainvoke(
-            initial_state()
-        )
+        result = await create_agent_graph(
+            client, model=model, max_tool_calls=1
+        ).ainvoke(initial_state())
 
     assert requests == ["/products"]
     assert result["tool_call_count"] == 1
     messages = [item for item in result["messages"] if isinstance(item, ToolMessage)]
-    assert json.loads(messages[1].content)["error"]["detail"] == "Tool call limit reached"
+    assert (
+        json.loads(messages[1].content)["error"]["detail"] == "Tool call limit reached"
+    )
 
 
 @pytest.mark.asyncio
 async def test_tool_http_error_returns_to_agent() -> None:
     model = ScriptedModel(
         [
-            AIMessage(content="", tool_calls=[call("c1", "get_order", {"order_id": "o1"})]),
+            AIMessage(
+                content="", tool_calls=[call("c1", "get_order", {"order_id": "o1"})]
+            ),
             AIMessage(content="I could not find that order"),
         ]
     )
@@ -199,7 +226,9 @@ async def test_tool_http_error_returns_to_agent() -> None:
     ) as client:
         result = await create_agent_graph(client, model=model).ainvoke(initial_state())
 
-    tool_result = next(item for item in result["messages"] if isinstance(item, ToolMessage))
+    tool_result = next(
+        item for item in result["messages"] if isinstance(item, ToolMessage)
+    )
     assert json.loads(tool_result.content)["error"]["code"] == "not_found"
     assert result["tool_call_count"] == 1
     assert result["last_error"]["code"] == "not_found"

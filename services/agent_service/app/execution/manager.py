@@ -1,7 +1,7 @@
 """Classify execution failures and choose safe recovery actions.
 
-This module makes decisions only. A Worker must persist the chosen outcome and
-perform retries or business-result verification; neither is wired up yet.
+This module makes decisions only. The tool node persists outcomes and verifies
+uncertain writes before retrying them.
 """
 
 from __future__ import annotations
@@ -70,6 +70,8 @@ class RecoveryDecision:
 def classify_failure(error: Exception, *, is_write: bool) -> FailureKind:
     """Treat an ambiguous write response as unknown until Commerce is checked."""
     if isinstance(error, CommerceClientError):
+        if is_write and error.code == "invalid_response":
+            return FailureKind.UNCERTAIN_WRITE
         status = error.status_code
         transient = (
             error.retryable
@@ -80,7 +82,7 @@ def classify_failure(error: Exception, *, is_write: bool) -> FailureKind:
         )
         if not transient:
             return FailureKind.PERMANENT
-        if is_write and (status != 429):
+        if is_write:
             return FailureKind.UNCERTAIN_WRITE
         return FailureKind.TRANSIENT
     if isinstance(error, (httpx.RequestError, APIConnectionError, TimeoutError)):

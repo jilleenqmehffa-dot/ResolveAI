@@ -1,4 +1,4 @@
-"""Durable state transitions for read-only Agent runs."""
+"""Durable state transitions for Agent runs."""
 
 from __future__ import annotations
 
@@ -65,8 +65,13 @@ def submit_run(
         )
         if existing is not None:
             return existing.id
+        seq = conversation.next_message_seq
+        conversation.next_message_seq += 1
         message = Message(
-            conversation_id=conversation_id, role=MessageRole.USER, content=content
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=content,
+            seq=seq,
         )
         session.add(message)
         session.flush()
@@ -170,20 +175,32 @@ def finish_run(
     sessions: sessionmaker[Session], run_id: UUID, token: str, answer: str
 ) -> bool:
     with sessions() as session, session.begin():
+        # Serialize message numbering with submit_run. Lock the conversation
+        # first to keep a consistent lock order across both write paths.
+        conversation_id = session.scalar(
+            select(AgentRun.conversation_id).where(AgentRun.id == run_id)
+        )
+        if conversation_id is None:
+            return False
+        conversation = session.get(Conversation, conversation_id, with_for_update=True)
         run = session.get(AgentRun, run_id, with_for_update=True)
         if (
-            run is None
+            conversation is None
+            or run is None
             or run.status is not AgentRunStatus.RUNNING
             or run.lease_token != token
         ):
             return False
-        session.add(
-            Message(
-                conversation_id=run.conversation_id,
-                role=MessageRole.ASSISTANT,
-                content=answer,
-            )
+        message = Message(
+            conversation_id=run.conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=answer,
+            seq=conversation.next_message_seq,
         )
+        conversation.next_message_seq += 1
+        session.add(message)
+        session.flush()
+        run.response_message_id = message.id
         run.status = AgentRunStatus.SUCCEEDED
         run.result_text = answer
         run.error_code = None

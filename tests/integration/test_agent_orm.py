@@ -53,7 +53,7 @@ def session(engine):
 
 def seed(session):
     conversation = Conversation(customer_id="commerce-customer-1")
-    message = Message(role=MessageRole.USER, content="Hello")
+    message = Message(role=MessageRole.USER, content="Hello", seq=1)
     conversation.messages.append(message)
     session.add(conversation)
     session.flush()

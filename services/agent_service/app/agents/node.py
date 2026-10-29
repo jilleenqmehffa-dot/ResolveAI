@@ -1,4 +1,4 @@
-"""Nodes for the read-only Commerce Agent graph."""
+"""Nodes for the Commerce Agent graph."""
 
 import json
 from asyncio import sleep
@@ -22,10 +22,14 @@ from pydantic import BaseModel, ValidationError
 from services.agent_service.app.agents.routing import route_after_guard
 from services.agent_service.app.agents.state import AgentState, ErrorInfo, GuardResult
 from services.agent_service.app.execution.manager import (
+    BusinessResult,
     ExecutionManager,
     RecoveryAction,
 )
-from services.agent_service.app.execution.tool_invocations import ToolInvocationStore
+from services.agent_service.app.execution.tool_invocations import (
+    WRITE_TOOL_NAMES,
+    ToolInvocationStore,
+)
 from services.agent_service.app.models.agent import ToolExecutionStatus
 from services.agent_service.app.transport.commer_client import CommerceClientError
 
@@ -36,7 +40,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "and order facts, including current after-sales case status. Treat tool "
     "results as the source of truth. A closed case does not by itself prove "
     "that a refund was paid. "
-    "Only call one tool at a time. Do not claim an order was changed."
+    "Only call one tool at a time. You may mark an owned refund-type after-sales "
+    "case REFUNDED only when the user explicitly requests that case outcome. "
+    "This changes the case record, not the payment ledger; never claim that "
+    "funds were paid solely from the case result. If a write result is unknown, "
+    "say it needs verification and do not claim success. "
+    "Do not claim an order was changed."
 )
 
 
@@ -139,8 +148,26 @@ class AgentNodes:
         )
         return {"guard_result": result, "last_error": error}
 
+    async def _verify_refund_write(
+        self, case_id: str
+    ) -> tuple[BusinessResult, dict[str, Any] | None]:
+        """Read Commerce's current case state after an uncertain write."""
+        try:
+            data = await self._tools["get_after_sales_case"].ainvoke(
+                {"case_id": case_id}
+            )
+        except CommerceClientError:
+            return BusinessResult.UNKNOWN, None
+        if not isinstance(data, dict):
+            return BusinessResult.UNKNOWN, None
+        if data.get("status") == "CLOSED" and data.get("resolution") == "REFUNDED":
+            return BusinessResult.APPLIED, data
+        if data.get("status") == "PROCESSING" and data.get("resolution") is None:
+            return BusinessResult.NOT_APPLIED, data
+        return BusinessResult.UNKNOWN, data
+
     async def tools(self, state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-        """Dispatch one approved call, retry transient reads, and record attempts."""
+        """Dispatch one approved call and verify uncertain writes before retry."""
         if route_after_guard(state) != "approved":
             raise ValueError("tools node requires an approved call")
         call = state["messages"][-1].tool_calls[0]
@@ -152,6 +179,9 @@ class AgentNodes:
             raise TypeError("execution_manager must be an ExecutionManager")
         if invocations is not None and not isinstance(invocations, ToolInvocationStore):
             raise TypeError("tool_invocations must be a ToolInvocationStore")
+        is_write = call["name"] in WRITE_TOOL_NAMES
+        if is_write and invocations is None:
+            raise RuntimeError("write tools require a durable invocation store")
 
         started_at = monotonic()
         local_attempt_count = 0
@@ -164,6 +194,57 @@ class AgentNodes:
                     args=call["args"],
                     max_attempts=manager.policy.max_attempts,
                 )
+                if is_write and record.status is ToolExecutionStatus.UNKNOWN:
+                    verified, verified_data = await self._verify_refund_write(
+                        call["args"]["case_id"]
+                    )
+                    decision = manager.decide_verified_write(
+                        verified,
+                        attempt_count=record.attempt_count,
+                        elapsed_seconds=monotonic() - started_at,
+                    )
+                    if decision.action is RecoveryAction.SUCCEED:
+                        await invocations.resolve_unknown(
+                            call_id=call["id"],
+                            status=ToolExecutionStatus.SUCCEEDED,
+                            result_payload={"data": verified_data},
+                        )
+                        content = json.dumps(
+                            {"ok": True, "data": verified_data},
+                            ensure_ascii=False,
+                            default=str,
+                        )
+                        error = None
+                        break
+                    if decision.action is RecoveryAction.RETRY:
+                        await invocations.resolve_unknown(
+                            call_id=call["id"],
+                            status=ToolExecutionStatus.RETRY_PENDING,
+                            error_code="verified_not_applied",
+                        )
+                        await sleep(decision.retry_after_seconds or 0)
+                        continue
+                    code = (
+                        "verified_not_applied"
+                        if verified is BusinessResult.NOT_APPLIED
+                        else "write_result_unknown"
+                    )
+                    if verified is BusinessResult.NOT_APPLIED:
+                        await invocations.resolve_unknown(
+                            call_id=call["id"],
+                            status=ToolExecutionStatus.FAILED,
+                            error_code=code,
+                        )
+                    error = {
+                        "code": code,
+                        "source": "tool",
+                        "tool_call_id": call["id"],
+                        "detail": decision.reason,
+                    }
+                    content = json.dumps(
+                        {"ok": False, "error": error}, ensure_ascii=False
+                    )
+                    break
                 if not record.should_invoke:
                     if record.status is ToolExecutionStatus.SUCCEEDED:
                         content = json.dumps(
@@ -202,7 +283,7 @@ class AgentNodes:
             except CommerceClientError as exc:
                 decision = manager.decide_failure(
                     exc,
-                    is_write=False,  # Current Commerce tools are all reads.
+                    is_write=is_write,
                     attempt_count=attempt_count,
                     elapsed_seconds=monotonic() - started_at,
                 )
@@ -232,6 +313,8 @@ class AgentNodes:
                     )
                 if decision.action is RecoveryAction.RETRY:
                     await sleep(decision.retry_after_seconds or 0)
+                    continue
+                if decision.action is RecoveryAction.VERIFY_RESULT:
                     continue
                 content = json.dumps({"ok": False, **payload}, ensure_ascii=False)
                 break

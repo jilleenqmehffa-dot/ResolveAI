@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from services.agent_service.app.models.agent import ToolExecution, ToolExecutionStatus
 
+WRITE_TOOL_NAMES = frozenset({"mark_after_sales_refunded"})
+
 
 @dataclass(frozen=True, slots=True)
 class InvocationStart:
@@ -36,17 +38,18 @@ class ToolInvocationStore:
         self.run_id = run_id
         self._session_factory = session_factory
 
-    async def recover_interrupted_reads(self) -> None:
-        """An expired run lease makes its in-flight read safe to try again."""
-        await to_thread(self._recover_interrupted_reads)
+    async def recover_interrupted_invocations(self) -> None:
+        """Retry interrupted reads; require verification for interrupted writes."""
+        await to_thread(self._recover_interrupted_invocations)
 
-    def _recover_interrupted_reads(self) -> None:
+    def _recover_interrupted_invocations(self) -> None:
         with self._session_factory() as session, session.begin():
             session.execute(
                 update(ToolExecution)
                 .where(
                     ToolExecution.run_id == self.run_id,
                     ToolExecution.status == ToolExecutionStatus.RUNNING,
+                    ToolExecution.tool_name.not_in(WRITE_TOOL_NAMES),
                 )
                 .values(
                     status=ToolExecutionStatus.RETRY_PENDING,
@@ -54,6 +57,61 @@ class ToolInvocationStore:
                     finished_at=_utc_now(),
                 )
             )
+            session.execute(
+                update(ToolExecution)
+                .where(
+                    ToolExecution.run_id == self.run_id,
+                    ToolExecution.status == ToolExecutionStatus.RUNNING,
+                    ToolExecution.tool_name.in_(WRITE_TOOL_NAMES),
+                )
+                .values(
+                    status=ToolExecutionStatus.UNKNOWN,
+                    error_code="worker_interrupted",
+                    finished_at=_utc_now(),
+                )
+            )
+
+    async def resolve_unknown(
+        self,
+        *,
+        call_id: str,
+        status: ToolExecutionStatus,
+        result_payload: dict[str, Any] | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        """Persist the outcome of a read-back verification before retrying."""
+        await to_thread(
+            self._resolve_unknown,
+            call_id=call_id,
+            status=status,
+            result_payload=result_payload,
+            error_code=error_code,
+        )
+
+    def _resolve_unknown(
+        self,
+        *,
+        call_id: str,
+        status: ToolExecutionStatus,
+        result_payload: dict[str, Any] | None,
+        error_code: str | None,
+    ) -> None:
+        if status not in (
+            ToolExecutionStatus.SUCCEEDED,
+            ToolExecutionStatus.RETRY_PENDING,
+            ToolExecutionStatus.FAILED,
+        ):
+            raise ValueError("invalid verified write status")
+        with self._session_factory() as session, session.begin():
+            record = _locked_record(session, self.run_id, call_id)
+            if record.status is not ToolExecutionStatus.UNKNOWN:
+                raise ValueError("tool call is not awaiting verification")
+            record.status = status
+            record.result_payload = (
+                _json_payload(result_payload) if result_payload is not None else None
+            )
+            record.error_code = error_code
+            record.finished_at = _utc_now()
 
     async def start(
         self, *, call_id: str, tool_name: str, args: dict[str, Any], max_attempts: int

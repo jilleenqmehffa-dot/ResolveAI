@@ -1,4 +1,4 @@
-"""Celery entry points for durable read-only Agent execution."""
+"""Celery entry points for durable Agent execution."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from celery import Celery
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from services.agent_service.app.agents.graph import create_agent_graph
 from services.agent_service.app.core.config import get_settings
@@ -33,7 +33,12 @@ from services.agent_service.app.execution.manager import (
     RecoveryPolicy,
 )
 from services.agent_service.app.execution.tool_invocations import ToolInvocationStore
-from services.agent_service.app.models.agent import Message, MessageRole
+from services.agent_service.app.models.agent import (
+    AgentRun,
+    AgentRunStatus,
+    Message,
+    MessageRole,
+)
 from services.agent_service.app.transport.commer_client import (
     CommerceClient,
     CommerceClientError,
@@ -71,24 +76,36 @@ def _conversation_history(
 ) -> list[BaseMessage]:
     with sessions() as session:
         trigger = session.get(Message, claim.trigger_message_id)
-        if trigger is None:
+        if trigger is None or trigger.conversation_id != claim.conversation_id:
             raise RuntimeError("trigger message is missing")
-        earlier = list(
-            session.scalars(
-                select(Message)
+        question = aliased(Message)
+        answer = aliased(Message)
+        completed = list(
+            session.execute(
+                select(question, answer)
+                .join(AgentRun, AgentRun.trigger_message_id == question.id)
+                .join(answer, AgentRun.response_message_id == answer.id)
                 .where(
-                    Message.conversation_id == claim.conversation_id,
-                    Message.created_at < trigger.created_at,
+                    AgentRun.conversation_id == claim.conversation_id,
+                    AgentRun.status == AgentRunStatus.SUCCEEDED,
+                    question.conversation_id == claim.conversation_id,
+                    answer.conversation_id == claim.conversation_id,
+                    question.seq < trigger.seq,
+                    answer.seq < trigger.seq,
                 )
-                .order_by(Message.created_at.desc())
-                .limit(20)
+                .order_by(question.seq.desc())
+                .limit(10)
             )
         )
+    earlier = sorted(
+        (message for pair in completed for message in pair),
+        key=lambda message: message.seq,
+    )
     return [
         HumanMessage(content=item.content)
         if item.role is MessageRole.USER
         else AIMessage(content=item.content)
-        for item in reversed(earlier)
+        for item in earlier
     ]
 
 
@@ -125,7 +142,7 @@ async def _execute_graph(
 ) -> str:
     store = ToolInvocationStore(claim.run_id, sessions)
     if claim.resumed:
-        await store.recover_interrupted_reads()
+        await store.recover_interrupted_invocations()
     config = checkpoint_config(claim.run_id)
     config["configurable"].update(
         {"execution_manager": manager, "tool_invocations": store}
@@ -133,7 +150,11 @@ async def _execute_graph(
     commerce_url = get_settings().commerce_base_url
     async with (
         open_checkpointer() as saver,
-        CommerceClient(commerce_url, claim.customer_id) as client,
+        CommerceClient(
+            commerce_url,
+            claim.customer_id,
+            agent_token=get_settings().agent_internal_token,
+        ) as client,
     ):
 
         async def load_history(_state) -> list[BaseMessage]:

@@ -92,6 +92,9 @@ class Conversation(Base):
         default=ConversationStatus.ACTIVE,
         server_default="ACTIVE",
     )
+    next_message_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -130,6 +133,9 @@ class Message(Base):
         UniqueConstraint(
             "conversation_id", "id", name="uq_messages_conversation_id_id"
         ),
+        UniqueConstraint(
+            "conversation_id", "seq", name="uq_messages_conversation_id_seq"
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -145,6 +151,7 @@ class Message(Base):
         db_enum(MessageRole, "agent_message_role"), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -275,6 +282,12 @@ class AgentRun(Base):
             name="fk_agent_runs_trigger_same_conversation",
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["conversation_id", "response_message_id"],
+            ["messages.conversation_id", "messages.id"],
+            name="fk_agent_runs_response_same_conversation",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint(
             "conversation_id", "idempotency_key", name="uq_agent_runs_conversation_key"
         ),
@@ -292,6 +305,9 @@ class AgentRun(Base):
     )
     trigger_message_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), nullable=False, index=True
+    )
+    response_message_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
     )
     status: Mapped[AgentRunStatus] = mapped_column(
         db_enum(AgentRunStatus, "agent_run_status"),
@@ -345,6 +361,10 @@ class AgentRun(Base):
         back_populates="triggered_runs",
         foreign_keys=[trigger_message_id],
         primaryjoin="AgentRun.trigger_message_id == Message.id",
+    )
+    response_message: Mapped[Message | None] = relationship(
+        foreign_keys=[response_message_id],
+        primaryjoin="AgentRun.response_message_id == Message.id",
     )
     tool_executions: Mapped[list[ToolExecution]] = relationship(
         back_populates="agent_run", passive_deletes=True

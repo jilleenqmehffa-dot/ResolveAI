@@ -1,4 +1,4 @@
-"""Commerce read tools call the expected HTTP endpoints and classify failures."""
+"""Commerce client calls the expected HTTP endpoints and classifies failures."""
 
 import httpx
 import pytest
@@ -24,10 +24,20 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         )
         if request.url.path in ("/products", "/customers/u1/orders", "/after-sales/"):
             return httpx.Response(200, json=[])
+        if request.method == "PUT":
+            assert request.headers["x-agent-token"] == "test-agent-token"
+            assert request.headers["x-customer-id"] == "u1"
+            assert request.content == b""
+            return httpx.Response(
+                200, json={"status": "CLOSED", "resolution": "REFUNDED"}
+            )
         return httpx.Response(200, json={"ok": True})
 
     async with CommerceClient(
-        "http://commerce.test", "u1", transport=httpx.MockTransport(respond)
+        "http://commerce.test",
+        "u1",
+        agent_token="test-agent-token",
+        transport=httpx.MockTransport(respond),
     ) as client:
         assert await client.list_products() == []
         assert await client.get_product("p1") == {"ok": True}
@@ -36,6 +46,10 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         assert await client.get_order("o1") == {"ok": True}
         assert await client.list_after_sales_cases() == []
         assert await client.get_after_sales_case("c1") == {"ok": True}
+        assert await client.mark_after_sales_refunded("c1") == {
+            "status": "CLOSED",
+            "resolution": "REFUNDED",
+        }
 
     assert requests == [
         ("GET", "/products", None),
@@ -45,6 +59,7 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         ("GET", "/orders/o1", "u1"),
         ("GET", "/after-sales/", "u1"),
         ("GET", "/after-sales/c1", "u1"),
+        ("PUT", "/after-sales/c1/resolution/refunded", None),
     ]
 
 

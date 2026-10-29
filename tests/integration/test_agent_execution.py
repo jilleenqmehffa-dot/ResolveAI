@@ -1,6 +1,7 @@
 """Durable Agent run, checkpoint, and tool record on an isolated database."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -8,7 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from services.agent_service.app.agents.graph import create_agent_graph
@@ -30,7 +31,9 @@ from services.agent_service.app.execution.tool_invocations import ToolInvocation
 from services.agent_service.app.models.agent import (
     AgentRun,
     Conversation,
+    Message,
     ToolExecution,
+    ToolExecutionStatus,
 )
 from services.agent_service.app.transport.commer_client import CommerceClient
 from services.agent_service.app.workers import tasks
@@ -165,9 +168,169 @@ async def test_run_checkpoint_and_tool_record(monkeypatch) -> None:
             run = session.get(AgentRun, run_id)
             record = session.query(ToolExecution).filter_by(run_id=run_id).one()
             assert run.status.value == "SUCCEEDED"
+            assert run.response_message_id is not None
             assert run.attempt_count == 2
             assert record.status.value == "SUCCEEDED"
             assert record.attempt_count == 1
+    finally:
+        engine.dispose()
+
+
+def test_short_conversation_history_uses_completed_pairs_and_sequence() -> None:
+    engine = create_engine(DATABASE_URL)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    customer_id = f"history-{uuid4()}"
+    try:
+        with sessions() as session, session.begin():
+            conversation = Conversation(customer_id=customer_id)
+            other = Conversation(customer_id=f"other-{customer_id}")
+            session.add_all([conversation, other])
+            session.flush()
+
+        for turn in range(1, 6):
+            run_id = submit_run(
+                sessions,
+                conversation_id=conversation.id,
+                customer_id=customer_id,
+                content=f"Question {turn}",
+                idempotency_key=str(uuid4()),
+                total_timeout_seconds=120,
+            )
+            claim = claim_run(
+                sessions,
+                run_id,
+                lease_seconds=60,
+                total_timeout_seconds=120,
+                max_attempts=3,
+            )
+            assert claim is not None
+            assert [
+                item.content for item in tasks._conversation_history(sessions, claim)
+            ] == [
+                content
+                for previous in range(1, turn)
+                for content in (f"Question {previous}", f"Answer {previous}")
+            ]
+            assert finish_run(sessions, run_id, claim.lease_token, f"Answer {turn}")
+
+        # Equal timestamps do not change the sequence boundary or order.
+        with sessions() as session, session.begin():
+            messages = session.scalars(
+                select(Message).where(Message.conversation_id == conversation.id)
+            ).all()
+            same_time = datetime.now(UTC)
+            for message in messages:
+                message.created_at = same_time
+
+        pending_id = submit_run(
+            sessions,
+            conversation_id=conversation.id,
+            customer_id=customer_id,
+            content="Pending question",
+            idempotency_key=str(uuid4()),
+            total_timeout_seconds=120,
+        )
+        other_id = submit_run(
+            sessions,
+            conversation_id=other.id,
+            customer_id=other.customer_id,
+            content="Other conversation",
+            idempotency_key=str(uuid4()),
+            total_timeout_seconds=120,
+        )
+        current_key = str(uuid4())
+        current_id = submit_run(
+            sessions,
+            conversation_id=conversation.id,
+            customer_id=customer_id,
+            content="Current question",
+            idempotency_key=current_key,
+            total_timeout_seconds=120,
+        )
+        with sessions() as session, session.begin():
+            session.get(
+                Message, session.get(AgentRun, current_id).trigger_message_id
+            ).created_at = same_time
+        current = claim_run(
+            sessions,
+            current_id,
+            lease_seconds=60,
+            total_timeout_seconds=120,
+            max_attempts=3,
+        )
+        assert current is not None
+        expected = [
+            content
+            for turn in range(1, 6)
+            for content in (f"Question {turn}", f"Answer {turn}")
+        ]
+        assert [
+            item.content for item in tasks._conversation_history(sessions, current)
+        ] == expected
+
+        # A reply committed after the current trigger cannot enter its history.
+        pending = claim_run(
+            sessions,
+            pending_id,
+            lease_seconds=60,
+            total_timeout_seconds=120,
+            max_attempts=3,
+        )
+        assert pending is not None
+        assert finish_run(sessions, pending_id, pending.lease_token, "Late answer")
+        assert [
+            item.content for item in tasks._conversation_history(sessions, current)
+        ] == expected
+        assert other_id != current_id
+
+        # Idempotent retry uses the same trigger and cannot add another user row.
+        assert current_id == submit_run(
+            sessions,
+            conversation_id=conversation.id,
+            customer_id=customer_id,
+            content="Current question",
+            idempotency_key=current_key,
+            total_timeout_seconds=120,
+        )
+        with sessions() as session:
+            ordered = session.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.seq)
+            ).all()
+            assert [item.seq for item in ordered] == list(range(1, len(ordered) + 1))
+    finally:
+        engine.dispose()
+
+
+def test_concurrent_submissions_get_unique_message_sequence() -> None:
+    engine = create_engine(DATABASE_URL)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    customer_id = f"concurrent-{uuid4()}"
+    try:
+        with sessions() as session, session.begin():
+            conversation = Conversation(customer_id=customer_id)
+            session.add(conversation)
+            session.flush()
+
+        def submit(index: int) -> UUID:
+            return submit_run(
+                sessions,
+                conversation_id=conversation.id,
+                customer_id=customer_id,
+                content=f"Concurrent {index}",
+                idempotency_key=str(uuid4()),
+                total_timeout_seconds=120,
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            run_ids = list(pool.map(submit, range(4)))
+        assert len(set(run_ids)) == 4
+        with sessions() as session:
+            seqs = session.scalars(
+                select(Message.seq).where(Message.conversation_id == conversation.id)
+            ).all()
+        assert sorted(seqs) == [1, 2, 3, 4]
     finally:
         engine.dispose()
 
@@ -248,5 +411,56 @@ async def test_worker_finishes_once_when_task_is_redelivered(monkeypatch) -> Non
             assert run.status.value == "SUCCEEDED"
             assert run.result_text == "Completed"
             assert run.attempt_count == 1
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_interrupted_write_requires_read_back_before_replay() -> None:
+    engine = create_engine(DATABASE_URL)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    try:
+        with sessions() as session, session.begin():
+            conversation = Conversation(customer_id=f"write-test-{uuid4()}")
+            session.add(conversation)
+            session.flush()
+        run_id = submit_run(
+            sessions,
+            conversation_id=conversation.id,
+            customer_id=conversation.customer_id,
+            content="Mark my refund case",
+            idempotency_key=str(uuid4()),
+            total_timeout_seconds=120,
+        )
+        store = ToolInvocationStore(run_id, sessions)
+        started = await store.start(
+            call_id="write-1",
+            tool_name="mark_after_sales_refunded",
+            args={"case_id": "case-1"},
+            max_attempts=3,
+        )
+        assert started.should_invoke
+        await store.recover_interrupted_invocations()
+        uncertain = await store.start(
+            call_id="write-1",
+            tool_name="mark_after_sales_refunded",
+            args={"case_id": "case-1"},
+            max_attempts=3,
+        )
+        assert not uncertain.should_invoke
+        assert uncertain.status is ToolExecutionStatus.UNKNOWN
+        assert uncertain.attempt_count == 1
+        await store.resolve_unknown(
+            call_id="write-1",
+            status=ToolExecutionStatus.RETRY_PENDING,
+            error_code="verified_not_applied",
+        )
+        retry = await store.start(
+            call_id="write-1",
+            tool_name="mark_after_sales_refunded",
+            args={"case_id": "case-1"},
+            max_attempts=3,
+        )
+        assert retry.should_invoke and retry.attempt_count == 2
     finally:
         engine.dispose()

@@ -1,4 +1,4 @@
-"""Agent tools expose user-scoped Commerce reads."""
+"""Agent tools use the current customer's Commerce context."""
 
 import httpx
 import pytest
@@ -32,10 +32,20 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         )
         if request.url.path in ("/products", "/customers/u1/orders", "/after-sales/"):
             return httpx.Response(200, json=[{"id": "one"}])
+        if request.method == "PUT":
+            assert request.headers["x-agent-token"] == "test-agent-token"
+            assert request.headers["x-customer-id"] == "u1"
+            assert request.content == b""
+            return httpx.Response(
+                200, json={"status": "CLOSED", "resolution": "REFUNDED"}
+            )
         return httpx.Response(200, json={"id": "one"})
 
     async with CommerceClient(
-        "http://commerce.test", "u1", transport=httpx.MockTransport(respond)
+        "http://commerce.test",
+        "u1",
+        agent_token="test-agent-token",
+        transport=httpx.MockTransport(respond),
     ) as client:
         tools = {item.name: item for item in create_commerce_tools(client)}
         assert set(tools) == {
@@ -46,6 +56,7 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "get_order",
             "list_after_sales_cases",
             "get_after_sales_case",
+            "mark_after_sales_refunded",
         }
         assert tools["list_orders"].args == {}
         assert set(tools["get_order"].args) == {"order_id"}
@@ -57,6 +68,7 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "get_order": GetOrderArgs,
             "list_after_sales_cases": EmptyToolArgs,
             "get_after_sales_case": GetAfterSalesCaseArgs,
+            "mark_after_sales_refunded": GetAfterSalesCaseArgs,
         }
 
         assert await tools["list_products"].ainvoke({}) == [{"id": "one"}]
@@ -68,6 +80,10 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         assert await tools["get_after_sales_case"].ainvoke({"case_id": "c1"}) == {
             "id": "one"
         }
+        assert await tools["mark_after_sales_refunded"].ainvoke({"case_id": "c1"}) == {
+            "status": "CLOSED",
+            "resolution": "REFUNDED",
+        }
 
     assert requests == [
         ("/products", None),
@@ -77,6 +93,7 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         ("/orders/o1", "u1"),
         ("/after-sales/", "u1"),
         ("/after-sales/c1", "u1"),
+        ("/after-sales/c1/resolution/refunded", None),
     ]
 
 

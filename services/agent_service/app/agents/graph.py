@@ -1,4 +1,4 @@
-"""Wire the Agent nodes according to the read-only workflow."""
+"""Wire the Agent nodes and Commerce tools."""
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
