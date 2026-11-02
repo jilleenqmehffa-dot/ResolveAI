@@ -222,6 +222,7 @@ async def test_tool_http_error_returns_to_agent() -> None:
     async with CommerceClient(
         "http://commerce.test",
         "u1",
+        agent_token="test-agent-token",
         transport=httpx.MockTransport(lambda _request: httpx.Response(404)),
     ) as client:
         result = await create_agent_graph(client, model=model).ainvoke(initial_state())

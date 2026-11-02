@@ -14,6 +14,8 @@ from services.commerce_service.app.main import create_app
 from services.commerce_service.app.models import (
     AfterSalesCase,
     Base,
+    FulfillmentItem,
+    FulfillmentTracking,
     Order,
     OrderItem,
     OrderPayment,
@@ -64,6 +66,7 @@ def client_and_sessions(tmp_path, monkeypatch):
                     first_name="Ada",
                     last_name="Lin",
                     email="ada@example.com",
+                    zip="19122",
                     payment_methods=[
                         PaymentMethod(payment_method_id="card1", source="credit_card")
                     ],
@@ -104,6 +107,31 @@ def client_and_sessions(tmp_path, monkeypatch):
                             payment_method_id="card1",
                         )
                     ],
+                    fulfillment_tracking=(
+                        [
+                            FulfillmentTracking(
+                                fulfillment_index=0,
+                                position=0,
+                                tracking_id="track-1",
+                            ),
+                            FulfillmentTracking(
+                                fulfillment_index=0,
+                                position=1,
+                                tracking_id="track-2",
+                            ),
+                        ]
+                        if order_id == "delivered"
+                        else []
+                    ),
+                    fulfillment_items=(
+                        [
+                            FulfillmentItem(
+                                fulfillment_index=0, position=0, item_id="sku-a"
+                            )
+                        ]
+                        if order_id == "delivered"
+                        else []
+                    ),
                 )
             )
 
@@ -146,12 +174,87 @@ async def test_retail_read_routes(client_and_sessions) -> None:
             "pending",
             "delivered",
         }
-        order = await client.get("/orders/pending", params={"user_id": "u1"})
+        order = await client.get(
+            "/orders/pending",
+            headers={"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"},
+        )
         assert order.json()["items"][0]["item_id"] == "sku-a"
+        assert order.json()["fulfillments"] == []
+        delivered = await client.get(
+            "/orders/delivered",
+            headers={"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"},
+        )
+        assert delivered.json()["fulfillments"] == [
+            {"tracking_id": ["track-1", "track-2"], "item_ids": ["sku-a"]}
+        ]
         assert (
-            await client.get("/orders/pending", params={"user_id": "u2"})
+            await client.get(
+                "/orders/pending",
+                headers={"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u2"},
+            )
         ).status_code == 404
+        assert (
+            await client.get(
+                "/orders/missing",
+                headers={"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"},
+            )
+        ).status_code == 404
+        assert (
+            await client.get("/orders/pending", params={"user_id": "u1"})
+        ).status_code == 422
+        assert (
+            await client.get(
+                "/orders/pending",
+                headers={"X-Agent-Token": "wrong", "X-Customer-ID": "u1"},
+            )
+        ).status_code == 401
         assert (await client.get("/products/missing")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_customer_lookup_routes_require_internal_token(
+    client_and_sessions,
+) -> None:
+    client, _sessions = client_and_sessions
+    headers = {"X-Agent-Token": "test-agent-token"}
+    async with client:
+        by_email = await client.get(
+            "/customers/lookup/by-email",
+            params={"email": "ADA@EXAMPLE.COM"},
+            headers=headers,
+        )
+        assert by_email.json() == {"user_id": "u1"}
+        by_name = await client.get(
+            "/customers/lookup/by-name-zip",
+            params={"first_name": "ada", "last_name": "LIN", "zip": "19122"},
+            headers=headers,
+        )
+        assert by_name.json() == {"user_id": "u1"}
+        wrong_zip = await client.get(
+            "/customers/lookup/by-name-zip",
+            params={"first_name": "Ada", "last_name": "Lin", "zip": "00000"},
+            headers=headers,
+        )
+        assert wrong_zip.status_code == 404
+        other_customer = await client.get(
+            "/customers/lookup/by-email",
+            params={"email": "bob@example.com"},
+            headers=headers,
+        )
+        assert other_customer.json() == {"user_id": "u2"}
+        missing = await client.get(
+            "/customers/lookup/by-email",
+            params={"email": "missing@example.com"},
+            headers=headers,
+        )
+        assert missing.status_code == 404
+        assert (
+            await client.get(
+                "/customers/lookup/by-email",
+                params={"email": "ada@example.com"},
+                headers={"X-Agent-Token": "wrong"},
+            )
+        ).status_code == 401
 
 
 @pytest.mark.asyncio

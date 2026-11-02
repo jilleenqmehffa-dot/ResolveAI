@@ -39,6 +39,10 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             return httpx.Response(
                 200, json={"status": "CLOSED", "resolution": "REFUNDED"}
             )
+        if request.url.path == "/orders/o1":
+            assert request.headers["x-agent-token"] == "test-agent-token"
+            assert request.headers["x-customer-id"] == "u1"
+            assert "user_id" not in request.url.params
         return httpx.Response(200, json={"id": "one"})
 
     async with CommerceClient(
@@ -90,7 +94,7 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         ("/products/p1", None),
         ("/items/sku1", None),
         ("/customers/u1/orders", None),
-        ("/orders/o1", "u1"),
+        ("/orders/o1", None),
         ("/after-sales/", "u1"),
         ("/after-sales/c1", "u1"),
         ("/after-sales/c1/resolution/refunded", None),
@@ -102,6 +106,7 @@ async def test_tool_preserves_classified_client_error() -> None:
     async with CommerceClient(
         "http://commerce.test",
         "u1",
+        agent_token="test-agent-token",
         transport=httpx.MockTransport(lambda _request: httpx.Response(404)),
     ) as client:
         tools = {item.name: item for item in create_commerce_tools(client)}

@@ -19,7 +19,9 @@ from langchain_core.messages import HumanMessage
 from services.agent_service.app.agents.graph import create_agent_graph
 from services.agent_service.app.transport.commer_client import CommerceClient
 
-async with CommerceClient(commerce_base_url, authenticated_user_id) as client:
+async with CommerceClient(
+    commerce_base_url, authenticated_user_id, agent_token=agent_internal_token
+) as client:
     graph = create_agent_graph(client)
     result = await graph.ainvoke({
         "messages": [HumanMessage(content=user_text)],

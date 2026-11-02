@@ -46,6 +46,10 @@ class CustomerResponse(ApiModel):
     address: AddressResponse
 
 
+class CustomerIdResponse(ApiModel):
+    user_id: str
+
+
 class PaymentMethodResponse(ApiModel):
     payment_method_id: str
     source: str
@@ -76,6 +80,11 @@ class OrderPaymentResponse(ApiModel):
     payment_method_id: str
 
 
+class FulfillmentResponse(ApiModel):
+    tracking_id: list[str]
+    item_ids: list[str]
+
+
 class ExchangeItemResponse(ApiModel):
     position: int
     old_item_id: str
@@ -96,6 +105,7 @@ class OrderResponse(OrderSummaryResponse):
     return_estimated_refund: Decimal | None
     items: list[OrderItemResponse]
     payment_history: list[OrderPaymentResponse]
+    fulfillments: list[FulfillmentResponse]
     exchange_items: list[ExchangeItemResponse]
     return_items: list[ReturnItemResponse]
 

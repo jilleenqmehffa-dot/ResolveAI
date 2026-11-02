@@ -2,16 +2,21 @@
 
 import json
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from services.commerce_service.app.api.dependencies import RetailServiceDep, SessionDep
+from services.commerce_service.app.api.dependencies import (
+    RetailServiceDep,
+    SessionDep,
+    trusted_agent_customer,
+)
 from services.commerce_service.app.core.exceptions import NotFoundError
 from services.commerce_service.app.models import Order
 from services.commerce_service.app.schemas.api import (
     AddressResponse,
     ExchangeItemResponse,
+    FulfillmentResponse,
     OrderActionRequest,
     OrderItemResponse,
     OrderPaymentResponse,
@@ -24,6 +29,10 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 def _order_response(order: Order) -> OrderResponse:
+    fulfillment_indexes = sorted(
+        {item.fulfillment_index for item in order.fulfillment_tracking}
+        | {item.fulfillment_index for item in order.fulfillment_items}
+    )
     return OrderResponse(
         order_id=order.order_id,
         user_id=order.user_id,
@@ -56,6 +65,21 @@ def _order_response(order: Order) -> OrderResponse:
             )
             for payment in order.payment_history
         ],
+        fulfillments=[
+            FulfillmentResponse(
+                tracking_id=[
+                    tracking.tracking_id
+                    for tracking in order.fulfillment_tracking
+                    if tracking.fulfillment_index == index
+                ],
+                item_ids=[
+                    item.item_id
+                    for item in order.fulfillment_items
+                    if item.fulfillment_index == index
+                ],
+            )
+            for index in fulfillment_indexes
+        ],
         exchange_items=[
             ExchangeItemResponse(
                 position=item.position,
@@ -75,14 +99,16 @@ def _order_response(order: Order) -> OrderResponse:
 def get_order(
     order_id: str,
     session: SessionDep,
-    user_id: str = Query(min_length=1),
+    customer_id: str = Depends(trusted_agent_customer),
 ) -> OrderResponse:
     order = session.scalar(
         select(Order)
-        .where(Order.order_id == order_id, Order.user_id == user_id)
+        .where(Order.order_id == order_id, Order.user_id == customer_id)
         .options(
             selectinload(Order.items),
             selectinload(Order.payment_history),
+            selectinload(Order.fulfillment_tracking),
+            selectinload(Order.fulfillment_items),
             selectinload(Order.exchange_items),
             selectinload(Order.return_items),
         )

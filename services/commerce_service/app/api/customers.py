@@ -1,19 +1,61 @@
 """Customer profile, payment method, and order lookup routes."""
 
-from fastapi import APIRouter
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 
-from services.commerce_service.app.api.dependencies import SessionDep
+from services.commerce_service.app.api.dependencies import (
+    SessionDep,
+    trusted_agent_token,
+)
 from services.commerce_service.app.core.exceptions import NotFoundError
 from services.commerce_service.app.models import Order, PaymentMethod, User
 from services.commerce_service.app.schemas.api import (
     AddressResponse,
+    CustomerIdResponse,
     CustomerResponse,
     OrderSummaryResponse,
     PaymentMethodResponse,
 )
 
 router = APIRouter(prefix="/customers", tags=["customers"])
+
+
+@router.get("/lookup/by-email", response_model=CustomerIdResponse)
+def find_customer_by_email(
+    session: SessionDep,
+    email: str = Query(min_length=1),
+    _trusted: None = Depends(trusted_agent_token),
+) -> CustomerIdResponse:
+    """Resolve a Bench customer from an email clue for trusted callers."""
+    user_id = session.scalar(
+        select(User.user_id).where(
+            func.lower(User.email) == email.strip().lower(),
+        )
+    )
+    if user_id is None:
+        raise NotFoundError("Customer was not found")
+    return CustomerIdResponse(user_id=user_id)
+
+
+@router.get("/lookup/by-name-zip", response_model=CustomerIdResponse)
+def find_customer_by_name_zip(
+    session: SessionDep,
+    first_name: str = Query(min_length=1),
+    last_name: str = Query(min_length=1),
+    zip: str = Query(min_length=1),
+    _trusted: None = Depends(trusted_agent_token),
+) -> CustomerIdResponse:
+    """Resolve a Bench customer from name and ZIP clues for trusted callers."""
+    user_id = session.scalar(
+        select(User.user_id).where(
+            func.lower(User.first_name) == first_name.strip().lower(),
+            func.lower(User.last_name) == last_name.strip().lower(),
+            User.zip == zip.strip(),
+        )
+    )
+    if user_id is None:
+        raise NotFoundError("Customer was not found")
+    return CustomerIdResponse(user_id=user_id)
 
 
 def _customer(session: SessionDep, user_id: str) -> User:

@@ -143,10 +143,19 @@ class CommerceClient:
 
     async def get_order(self, order_id: str) -> dict[str, Any]:
         """Get one order, scoped to the authenticated user context."""
+        if not self.agent_token:
+            raise RuntimeError("Agent token is required for Commerce order reads")
         path = self._path_id(order_id)
         return cast(
             dict[str, Any],
-            await self._get(f"/orders/{path}", params={"user_id": self.user_id}),
+            await self._request(
+                "GET",
+                f"/orders/{path}",
+                headers={
+                    "X-Agent-Token": self.agent_token,
+                    "X-Customer-ID": self.user_id,
+                },
+            ),
         )
 
     async def list_after_sales_cases(self) -> list[dict[str, Any]]:

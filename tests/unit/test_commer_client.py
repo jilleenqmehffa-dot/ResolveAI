@@ -31,6 +31,10 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
             return httpx.Response(
                 200, json={"status": "CLOSED", "resolution": "REFUNDED"}
             )
+        if request.url.path == "/orders/o1":
+            assert request.headers["x-agent-token"] == "test-agent-token"
+            assert request.headers["x-customer-id"] == "u1"
+            assert "user_id" not in request.url.params
         return httpx.Response(200, json={"ok": True})
 
     async with CommerceClient(
@@ -56,7 +60,7 @@ async def test_read_operations_use_commerce_routes_and_current_user() -> None:
         ("GET", "/products/p1", None),
         ("GET", "/items/sku1", None),
         ("GET", "/customers/u1/orders", None),
-        ("GET", "/orders/o1", "u1"),
+        ("GET", "/orders/o1", None),
         ("GET", "/after-sales/", "u1"),
         ("GET", "/after-sales/c1", "u1"),
         ("PUT", "/after-sales/c1/resolution/refunded", None),
@@ -68,6 +72,7 @@ async def test_http_errors_are_classified() -> None:
     async with CommerceClient(
         "http://commerce.test",
         "u1",
+        agent_token="test-agent-token",
         transport=httpx.MockTransport(lambda _request: httpx.Response(404)),
     ) as client:
         with pytest.raises(CommerceClientError) as error:
@@ -110,7 +115,10 @@ async def test_direct_client_calls_forward_ids_without_tool_validation() -> None
         return httpx.Response(200, json={})
 
     async with CommerceClient(
-        "http://commerce.test", "u1", transport=httpx.MockTransport(respond)
+        "http://commerce.test",
+        "u1",
+        agent_token="test-agent-token",
+        transport=httpx.MockTransport(respond),
     ) as client:
         assert await client.get_product("p1") == {}
         assert await client.get_item("sku1") == {}

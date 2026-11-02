@@ -53,7 +53,12 @@ class OrderRepository:
         statement = (
             select(Order)
             .where(Order.order_id == order_id)
-            .options(selectinload(Order.items), selectinload(Order.payment_history))
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.payment_history),
+                selectinload(Order.fulfillment_tracking),
+                selectinload(Order.fulfillment_items),
+            )
             .with_for_update(of=Order)
             .execution_options(populate_existing=True)
         )
