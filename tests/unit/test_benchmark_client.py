@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import httpx
 
-from benchmark.clients import load_client
-from benchmark.clients.benchmark_client import BenchCase, load_cases
+from evals.clients import load_client
+from evals.clients.benchmark_client import BenchCase, load_cases
 
 
 def test_every_bench_task_maps_to_one_customer_without_grading_actions():

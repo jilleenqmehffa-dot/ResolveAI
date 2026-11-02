@@ -20,7 +20,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY services/__init__.py /app/services/__init__.py
 COPY services/commerce_service /app/services/commerce_service
-COPY benchmark /app/benchmark
+COPY evals /app/evals
 
 USER 10001:10001
 

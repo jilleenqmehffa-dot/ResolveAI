@@ -147,7 +147,7 @@ services:
   commerce-seed:
     profiles: ["seed"]
     build: *commerce-build
-    command: ["python", "-m", "benchmark.runners.import_retail_json"]
+    command: ["python", "-m", "evals.runners.import_retail_json"]
     environment:
       DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
     depends_on:

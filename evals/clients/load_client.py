@@ -15,7 +15,7 @@ from uuid import uuid4
 import httpx
 from dotenv import load_dotenv
 
-from benchmark.clients.benchmark_client import BenchCase, load_cases
+from evals.clients.benchmark_client import BenchCase, load_cases
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"}
 

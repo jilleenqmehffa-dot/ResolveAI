@@ -9,11 +9,11 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, func, select
 
-from benchmark.runners.import_retail_json import import_json
+from evals.runners.import_retail_json import import_json
 from services.commerce_service.app.core.config import get_settings
 from services.commerce_service.app.models import Base
 
-DATASET = Path(__file__).resolve().parents[2] / "benchmark/datasets/db.json"
+DATASET = Path(__file__).resolve().parents[2] / "evals/datasets/db.json"
 ADDRESS_FIELDS = ("address1", "address2", "city", "state", "country", "zip")
 
 

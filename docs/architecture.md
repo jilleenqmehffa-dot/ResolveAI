@@ -48,12 +48,12 @@ flowchart LR
 
 **Agent Service** 拥有对话、执行状态、工具调用记录、执行事件和检查点。API 层只处理协议、校验和状态查询；决策层封装 LangGraph、提示词和工具；Execution Manager 统一控制排队、运行、重试、超时和终态；Worker 执行耗时任务。图片中的 `transport/` 负责外部 HTTP 调用，`messaging/` 负责队列发布，`maintenance/` 负责清理与维护任务。
 
-**Commerce Service** 拥有商品、规格、用户、付款方式、订单及售后数据。Agent 的 Commerce Tool 只能调用其公开 HTTP API；业务规则、数据库事务及价格结算仍由 Commerce Service 决定。当前实现可见 `services/commerce_service/app/`，业务模型位于 `models/retail.py`，JSON 数据导入入口位于 `benchmark/runners/import_retail_json.py`。
+**Commerce Service** 拥有商品、规格、用户、付款方式、订单及售后数据。Agent 的 Commerce Tool 只能调用其公开 HTTP API；业务规则、数据库事务及价格结算仍由 Commerce Service 决定。当前实现可见 `services/commerce_service/app/`，业务模型位于 `models/retail.py`，JSON 数据导入入口位于 `evals/runners/import_retail_json.py`。
 
 **目标数据库隔离** 是同一 PostgreSQL 实例中的两个逻辑数据库：Agent 执行数据与 Commerce 业务数据分别迁移、授权和备份。本地 Compose 已创建两个数据库并分别迁移；生产环境的授权和备份仍需按部署环境配置。
 
 ## 4. 目录规划与当前差距
 
-图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。`benchmark/clients/`、`adapters/`、`datasets/`、`runners/`、`evaluators/` 对应测试输入、适配、运行和评估。`infra/` 对应容器、故障注入和监控配置。
+图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。`evals/clients/`、`evals/datasets/`、`evals/runners/`、`evals/evaluators/` 对应测试输入、运行和评估。`infra/` 对应容器、故障注入和监控配置。
 
 当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的内部 API、数据模型、只读工具、一个售后状态写工具、Celery Worker、租约和检查点。`infra/` 中有 Toxiproxy 故障注入配置与基础监控配置；更完整的业务写工具、外部身份认证、执行事件接口、业务指标和端到端故障验收仍是后续目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。

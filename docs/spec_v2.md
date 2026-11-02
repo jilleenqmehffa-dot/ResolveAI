@@ -36,7 +36,7 @@ services/agent_service/
 └── Dockerfile
 ```
 
-`benchmark/clients/` 负责评测与负载客户端，`benchmark/adapters/` 负责任务格式映射，`benchmark/runners/` 负责任务批量提交，`benchmark/evaluators/` 负责结果评分。V2 只实现能跑通零售任务及最小并发/故障验收所需的部分；保留现有 `benchmark/datasets/` 与 JSON 导入 runner。
+`evals/clients/` 负责评测与负载客户端，`evals/clients/benchmark_client.py` 负责任务格式映射，`evals/runners/` 包含 JSON 数据导入脚本，`evals/evaluators/` 预留结果评分。V2 只实现能跑通零售任务及最小并发/故障验收所需的部分；保留现有 `evals/datasets/` 与 JSON 导入 runner。
 
 ## 4. 外部接口契约
 
@@ -100,6 +100,6 @@ LangGraph 图至少包含：加载会话上下文、规划下一步、调用工�
 | C. 异步与恢复 | RabbitMQ、Celery Worker、outbox、检查点、租约和重试 | Worker 重启及消息重投后没有重复执行结果；所有测试执行最终进入终态或明确待核对 |
 | D. 故障与并发 | Toxiproxy 场景、负载客户端、事件查询、指标 | 至少覆盖延迟、连接中断和超时；并发提交时无丢任务、无重复业务副作用 |
 
-自动化测试至少覆盖：状态机合法/非法转移、API 幂等、工具错误分类、Commerce 所属用户校验、数据库与队列交接、Worker 重投、检查点恢复、写操作结果未知、取消和超时。端到端评测使用 `benchmark/datasets/split_tasks.json` 的 `test` 划分（当前 40 条）记录任务完成率和动作正确率；`train` 划分用于开发，不用测试划分调提示词。首次评测建立基线，后续改动必须报告与基线的差异。
+自动化测试至少覆盖：状态机合法/非法转移、API 幂等、工具错误分类、Commerce 所属用户校验、数据库与队列交接、Worker 重投、检查点恢复、写操作结果未知、取消和超时。端到端评测使用 `evals/datasets/split_tasks.json` 的 `test` 划分（当前 40 条）记录任务完成率和动作正确率；`train` 划分用于开发，不用测试划分调提示词。首次评测建立基线，后续改动必须报告与基线的差异。
 
 **V2 完成标准**：Agent API 可提交、查询和取消执行；零售任务通过 LangGraph 与 Commerce HTTP 工具运行；队列/Worker 运行及故障恢复可复现；执行和工具链路可审计；写操作在不确定结果下不会被无条件重放；部署和测试命令写入 README。

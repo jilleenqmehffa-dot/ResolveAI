@@ -23,7 +23,7 @@ PostgreSQL 容器承载，但分别使用 `resolveai` 和 `resolveai_agent` 数�
 
 Agent 到 Commerce 的 HTTP 请求默认经过 Toxiproxy，未启用故障时正常透传。
 故障注入和监控的操作方法见 [基础设施说明](infra/README.md)。
-批量并发提交 Bench 场景的方法见 [Bench 并发客户端](benchmark/clients/README.md)。
+批量并发提交 Bench 场景的方法见 [Bench 并发客户端](docs/bench_client.md)。
 
 ## 启动 API
 
@@ -90,11 +90,11 @@ uv run alembic -c services/commerce_service/alembic.ini current
 uv run alembic -c services/commerce_service/alembic.ini check
 ```
 
-首次迁移是 `1d3a8191a431_create_retail_schema.py`。`8c2f0a4d91b7_match_benchmark_retail_csv.py` 将零售业务结构调整为可容纳 `benchmark/datasets/db.json` 的 12 张关系表；最新的 `c40a7d9e12f6_add_after_sales_cases.py` 增加独立的售后单表。Alembic 用 `alembic_version` 表记录数据库已执行到哪个版本；`check` 用于检查当前 ORM 是否还有未生成的结构变更。
+首次迁移是 `1d3a8191a431_create_retail_schema.py`。`8c2f0a4d91b7_match_benchmark_retail_csv.py` 将零售业务结构调整为可容纳 `evals/datasets/db.json` 的 12 张关系表；最新的 `c40a7d9e12f6_add_after_sales_cases.py` 增加独立的售后单表。Alembic 用 `alembic_version` 表记录数据库已执行到哪个版本；`check` 用于检查当前 ORM 是否还有未生成的结构变更。
 
 ## Benchmark 零售数据
 
-实际业务数据位于 `benchmark/datasets/db.json`，顶层包含 `products`、`users`、`orders`。JSON 中的嵌套内容对应以下数据表：
+实际业务数据位于 `evals/datasets/db.json`，顶层包含 `products`、`users`、`orders`。JSON 中的嵌套内容对应以下数据表：
 
 | JSON 内容 | 对应数据表 |
 | --- | --- |
@@ -106,9 +106,9 @@ uv run alembic -c services/commerce_service/alembic.ini check
 
 ```bash
 uv run alembic -c services/commerce_service/alembic.ini upgrade head
-uv run python -m benchmark.runners.import_retail_json
+uv run python -m evals.runners.import_retail_json
 ```
 
-runner 默认读取 `benchmark/datasets/db.json`；也可在命令后传入其他 JSON 文件路径。它在一次事务中导入全部数据，重复导入相同数据时跳过；如果表中已有不同数据，会报错并保留原数据。运行 `uv run pytest tests/integration/test_benchmark_schema.py` 可检查实际 JSON 的结构和导入行为。
+runner 默认读取 `evals/datasets/db.json`；也可在命令后传入其他 JSON 文件路径。它在一次事务中导入全部数据，重复导入相同数据时跳过；如果表中已有不同数据，会报错并保留原数据。运行 `uv run pytest tests/integration/test_benchmark_schema.py` 可检查实际 JSON 的结构和导入行为。
 
 `tasks.json` 和 `split_tasks.json` 是评测任务定义，不属于零售业务表。
