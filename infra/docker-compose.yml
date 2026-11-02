@@ -123,6 +123,11 @@ services:
     command: ["celery", "-A", "services.agent_service.app.workers.tasks:celery_app", "worker", "--loglevel=info", "-E"]
     environment:
       <<: *agent-env
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-true}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-resolveai}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_ENDPOINT: ${LANGSMITH_ENDPOINT:-}
+      LANGSMITH_WORKSPACE_ID: ${LANGSMITH_WORKSPACE_ID:-}
     depends_on:
       agent-migrate:
         condition: service_completed_successfully

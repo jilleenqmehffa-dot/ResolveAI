@@ -44,6 +44,14 @@ Commerce Service 通过 Repository 和 Service 在事务内执行状态转换，
 售后单状态通过 `list_after_sales_cases` 和 `get_after_sales_case` 实时读取；
 `CLOSED` 表示流程结束，不单独证明退款已经支付。
 
+## LangSmith tracing
+
+在根目录 `.env` 中配置 `LANGSMITH_TRACING=true`、`LANGSMITH_PROJECT=resolveai`
+和有效的 `LANGSMITH_API_KEY`。本地使用 `uv run --env-file .env` 启动 Worker 时，
+LangGraph 自动记录 Agent 图节点、DeepSeek 调用和工具调用。Docker Compose 会把
+这些变量传给 `agent-worker`；自定义 Endpoint 或组织级 Key 可补充
+`LANGSMITH_ENDPOINT`、`LANGSMITH_WORKSPACE_ID`。只有 Worker 执行 Agent 图时才产生这类 trace。
+
 ## 异步运行
 
 设置 `.env.example` 中的 Agent 数据库、RabbitMQ、Commerce 地址和内部 API Token。
