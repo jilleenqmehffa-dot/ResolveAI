@@ -12,6 +12,7 @@ from services.commerce_service.app.models import (
     OrderReturnItem,
     PaymentMethod,
     Product,
+    User,
     Variant,
 )
 
@@ -71,6 +72,11 @@ class OrderRepository:
 class UserRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def get_for_update(self, user_id: str) -> User | None:
+        return self.session.scalar(
+            select(User).where(User.user_id == user_id).with_for_update(of=User)
+        )
 
     def get_payment_method(
         self, user_id: str, payment_method_id: str

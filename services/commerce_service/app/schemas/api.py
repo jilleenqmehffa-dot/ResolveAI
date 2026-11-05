@@ -38,14 +38,6 @@ class AddressResponse(ApiModel):
     zip: str | None
 
 
-class CustomerResponse(ApiModel):
-    user_id: str
-    first_name: str
-    last_name: str
-    email: str
-    address: AddressResponse
-
-
 class CustomerIdResponse(ApiModel):
     user_id: str
 
@@ -58,10 +50,21 @@ class PaymentMethodResponse(ApiModel):
     balance: Decimal | None
 
 
+class CustomerResponse(ApiModel):
+    user_id: str
+    first_name: str
+    last_name: str
+    email: str
+    address: AddressResponse
+    orders: list[str]
+    payment_methods: list[PaymentMethodResponse]
+
+
 class OrderSummaryResponse(ApiModel):
     order_id: str
     user_id: str
     status: str
+    order_position: int | None = None
 
 
 class OrderItemResponse(ApiModel):
@@ -111,10 +114,26 @@ class OrderResponse(OrderSummaryResponse):
 
 
 class OrderActionRequest(ApiModel):
-    user_id: str
     item_ids: list[str] = Field(min_length=1)
     payment_method_id: str
 
 
 class ReplaceItemsRequest(OrderActionRequest):
     new_item_ids: list[str] = Field(min_length=1)
+
+
+class AddressRequest(ApiModel):
+    address1: str
+    address2: str
+    city: str
+    state: str
+    country: str
+    zip: str
+
+
+class CancelOrderRequest(ApiModel):
+    reason: str = Field(min_length=1)
+
+
+class ChangePaymentRequest(ApiModel):
+    payment_method_id: str = Field(min_length=1)

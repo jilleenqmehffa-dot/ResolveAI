@@ -59,7 +59,9 @@ class User(Base):
     )
     orders: Mapped[list[Order]] = relationship(back_populates="user")
     order_links: Mapped[list[UserOrderLink]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="UserOrderLink.position",
     )
 
 

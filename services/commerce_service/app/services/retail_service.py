@@ -18,6 +18,7 @@ from services.commerce_service.app.models import (
     Order,
     OrderItem,
     PaymentMethod,
+    User,
     Variant,
 )
 from services.commerce_service.app.repositories.retail import (
@@ -35,6 +36,7 @@ from services.commerce_service.app.schemas.retail import (
 )
 
 CENT = Decimal("0.01")
+ADDRESS_FIELDS = ("address1", "address2", "city", "state", "country", "zip")
 
 
 def _money(value: Decimal) -> Decimal:
@@ -254,3 +256,52 @@ class RetailService:
             self.returns.create_request(order, [item.item_id for item in selected])
             self.orders.save(order)
         return order
+
+    def cancel_pending_order(self, order_id: str, reason: str, user_id: str) -> Order:
+        with self._transaction():
+            order = self._locked_order(order_id, user_id, "pending")
+            if not reason.strip():
+                raise ValidationError("Cancellation reason must not be blank")
+            order.status = "cancelled"
+            order.cancel_reason = reason.strip()
+            self.orders.save(order)
+        return order
+
+    def modify_pending_order_address(
+        self, order_id: str, address: dict[str, str], user_id: str
+    ) -> Order:
+        with self._transaction():
+            order = self._locked_order(order_id, user_id, "pending")
+            for field in ADDRESS_FIELDS:
+                setattr(order, field, address[field])
+            order.status = "pending (address modified)"
+            self.orders.save(order)
+        return order
+
+    def modify_pending_order_payment(
+        self, order_id: str, payment_method_id: str, user_id: str
+    ) -> Order:
+        with self._transaction():
+            order = self._locked_order(order_id, user_id, "pending")
+            method = self._payment_method(user_id, payment_method_id)
+            payments = [
+                payment
+                for payment in order.payment_history
+                if payment.transaction_type == "payment"
+            ]
+            if not payments:
+                raise ValidationError("Order has no payment to modify")
+            for payment in payments:
+                payment.payment_method_id = method.payment_method_id
+            order.status = "pending (payment modified)"
+            self.orders.save(order)
+        return order
+
+    def modify_user_address(self, user_id: str, address: dict[str, str]) -> User:
+        with self._transaction():
+            user = self.users.get_for_update(user_id)
+            if user is None:
+                raise NotFoundError(f"Customer {user_id} was not found")
+            for field in ADDRESS_FIELDS:
+                setattr(user, field, address[field])
+        return user

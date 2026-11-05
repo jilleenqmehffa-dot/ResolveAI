@@ -22,6 +22,7 @@ from services.commerce_service.app.models import (
     PaymentMethod,
     Product,
     User,
+    UserOrderLink,
     Variant,
 )
 
@@ -68,7 +69,8 @@ def client_and_sessions(tmp_path, monkeypatch):
                     email="ada@example.com",
                     zip="19122",
                     payment_methods=[
-                        PaymentMethod(payment_method_id="card1", source="credit_card")
+                        PaymentMethod(payment_method_id="card1", source="credit_card"),
+                        PaymentMethod(payment_method_id="card3", source="credit_card"),
                     ],
                 ),
                 User(
@@ -134,6 +136,12 @@ def client_and_sessions(tmp_path, monkeypatch):
                     ),
                 )
             )
+        session.add_all(
+            [
+                UserOrderLink(user_id="u1", order_id="pending", position=0),
+                UserOrderLink(user_id="u1", order_id="delivered", position=1),
+            ]
+        )
 
     def test_session():
         with sessions() as session, session.begin():
@@ -167,13 +175,18 @@ async def test_retail_read_routes(client_and_sessions) -> None:
         assert item.json()["options"] == {"size": "S"}
         customer = await client.get("/customers/u1")
         assert customer.json()["first_name"] == "Ada"
+        assert customer.json()["orders"] == ["pending", "delivered"]
+        assert [
+            method["payment_method_id"]
+            for method in customer.json()["payment_methods"]
+        ] == ["card1", "card3"]
         methods = await client.get("/customers/u1/payment-methods")
-        assert [method["payment_method_id"] for method in methods.json()] == ["card1"]
+        assert [method["payment_method_id"] for method in methods.json()] == ["card1", "card3"]
         orders = await client.get("/customers/u1/orders")
-        assert {order["order_id"] for order in orders.json()} == {
-            "pending",
-            "delivered",
-        }
+        assert [(order["order_id"], order["order_position"]) for order in orders.json()] == [
+            ("pending", 0),
+            ("delivered", 1),
+        ]
         order = await client.get(
             "/orders/pending",
             headers={"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"},
@@ -260,26 +273,27 @@ async def test_customer_lookup_routes_require_internal_token(
 @pytest.mark.asyncio
 async def test_order_mutation_routes_and_errors(client_and_sessions) -> None:
     client, sessions = client_and_sessions
+    headers = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"}
     async with client:
         invalid_method = await client.post(
             "/orders/pending/items/modify",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-a"],
                 "new_item_ids": ["sku-b"],
                 "payment_method_id": "card2",
             },
+            headers=headers,
         )
         assert invalid_method.status_code == 404
 
         modified = await client.post(
             "/orders/pending/items/modify",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-a"],
                 "new_item_ids": ["sku-b"],
                 "payment_method_id": "card1",
             },
+            headers=headers,
         )
         assert modified.status_code == 200
         assert modified.json()["status"] == "pending (item modified)"
@@ -289,21 +303,21 @@ async def test_order_mutation_routes_and_errors(client_and_sessions) -> None:
         conflict = await client.post(
             "/orders/pending/items/modify",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-b"],
                 "new_item_ids": ["sku-a"],
                 "payment_method_id": "card1",
             },
+            headers=headers,
         )
         assert conflict.status_code == 409
 
         returned = await client.post(
             "/orders/delivered/return",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-a"],
                 "payment_method_id": "card1",
             },
+            headers=headers,
         )
         assert returned.status_code == 200
         assert returned.json()["status"] == "return requested"
@@ -321,26 +335,27 @@ async def test_order_mutation_routes_and_errors(client_and_sessions) -> None:
 @pytest.mark.asyncio
 async def test_exchange_route_records_request(client_and_sessions) -> None:
     client, _sessions = client_and_sessions
+    headers = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"}
     async with client:
         invalid = await client.post(
             "/orders/delivered/exchange",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-a"],
                 "new_item_ids": [],
                 "payment_method_id": "card1",
             },
+            headers=headers,
         )
         assert invalid.status_code == 422
 
         exchanged = await client.post(
             "/orders/delivered/exchange",
             json={
-                "user_id": "u1",
                 "item_ids": ["sku-a"],
                 "new_item_ids": ["sku-b"],
                 "payment_method_id": "card1",
             },
+            headers=headers,
         )
         assert exchanged.status_code == 200
         assert exchanged.json()["status"] == "exchange requested"
@@ -348,6 +363,130 @@ async def test_exchange_route_records_request(client_and_sessions) -> None:
             {"position": 0, "old_item_id": "sku-a", "new_item_id": "sku-b"}
         ]
         assert exchanged.json()["payment_history"][-1]["amount"] == "5.00"
+
+
+@pytest.mark.asyncio
+async def test_new_bench_writes_require_owned_identity_and_apply_changes(
+    client_and_sessions,
+) -> None:
+    client, sessions = client_and_sessions
+    owned = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"}
+    foreign = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u2"}
+    address = {
+        "address1": "123 Elm Street",
+        "address2": "Suite 2",
+        "city": "Austin",
+        "state": "TX",
+        "country": "USA",
+        "zip": "78712",
+    }
+    async with client:
+        for path, body in (
+            ("/orders/pending/cancel", {"reason": "No longer needed"}),
+            ("/orders/pending/address", address),
+            ("/orders/pending/payment", {"payment_method_id": "card1"}),
+            (
+                "/orders/pending/items/modify",
+                {
+                    "item_ids": ["sku-a"],
+                    "new_item_ids": ["sku-b"],
+                    "payment_method_id": "card1",
+                },
+            ),
+            (
+                "/orders/delivered/return",
+                {"item_ids": ["sku-a"], "payment_method_id": "card1"},
+            ),
+            (
+                "/orders/delivered/exchange",
+                {
+                    "item_ids": ["sku-a"],
+                    "new_item_ids": ["sku-b"],
+                    "payment_method_id": "card1",
+                },
+            ),
+        ):
+            assert (
+                await client.post(path, json=body, headers=foreign)
+            ).status_code == 404
+            assert (
+                await client.post(
+                    path,
+                    json=body,
+                    headers={"X-Agent-Token": "bad", "X-Customer-ID": "u1"},
+                )
+            ).status_code == 401
+        assert (
+            await client.post("/customers/u1/address", json=address, headers=foreign)
+        ).status_code == 404
+        assert (
+            await client.post("/customers/u1/address", json=address, headers=owned)
+        ).json()["address"] == address
+        changed = await client.post(
+            "/orders/pending/address", json=address, headers=owned
+        )
+        assert changed.status_code == 200
+        assert changed.json()["status"] == "pending (address modified)"
+        assert changed.json()["address"] == address
+        assert (
+            await client.post("/orders/pending/address", json=address, headers=owned)
+        ).status_code == 409
+    with sessions() as session:
+        assert session.get(User, "u1").address1 == "123 Elm Street"
+        assert session.get(Order, "pending").address1 == "123 Elm Street"
+
+
+@pytest.mark.asyncio
+async def test_cancel_and_payment_writes(client_and_sessions) -> None:
+    client, sessions = client_and_sessions
+    headers = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"}
+    async with client:
+        assert (
+            await client.post(
+                "/orders/pending/payment",
+                json={"payment_method_id": "card2"},
+                headers=headers,
+            )
+        ).status_code == 404
+        payment = await client.post(
+            "/orders/pending/payment",
+            json={"payment_method_id": "card3"},
+            headers=headers,
+        )
+        assert payment.status_code == 200
+        assert payment.json()["status"] == "pending (payment modified)"
+        assert payment.json()["payment_history"][0]["payment_method_id"] == "card3"
+        assert (
+            await client.post(
+                "/orders/pending/cancel",
+                json={"reason": "No longer needed"},
+                headers=headers,
+            )
+        ).status_code == 409
+    with sessions() as session:
+        assert session.get(Order, "pending").status == "pending (payment modified)"
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_order_records_reason(client_and_sessions) -> None:
+    client, sessions = client_and_sessions
+    headers = {"X-Agent-Token": "test-agent-token", "X-Customer-ID": "u1"}
+    async with client:
+        result = await client.post(
+            "/orders/pending/cancel",
+            json={"reason": " No longer needed "},
+            headers=headers,
+        )
+        assert result.status_code == 200
+        assert result.json()["status"] == "cancelled"
+        assert result.json()["cancel_reason"] == "No longer needed"
+        assert (
+            await client.post(
+                "/orders/pending/cancel", json={"reason": "again"}, headers=headers
+            )
+        ).status_code == 409
+    with sessions() as session:
+        assert session.get(Order, "pending").cancel_reason == "No longer needed"
 
 
 @pytest.mark.asyncio

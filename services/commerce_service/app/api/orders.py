@@ -14,7 +14,10 @@ from services.commerce_service.app.api.dependencies import (
 from services.commerce_service.app.core.exceptions import NotFoundError
 from services.commerce_service.app.models import Order
 from services.commerce_service.app.schemas.api import (
+    AddressRequest,
     AddressResponse,
+    CancelOrderRequest,
+    ChangePaymentRequest,
     ExchangeItemResponse,
     FulfillmentResponse,
     OrderActionRequest,
@@ -120,40 +123,89 @@ def get_order(
 
 @router.post("/{order_id}/items/modify", response_model=OrderResponse)
 def modify_order_items(
-    order_id: str, request: ReplaceItemsRequest, service: RetailServiceDep
+    order_id: str,
+    request: ReplaceItemsRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
 ) -> OrderResponse:
     order = service.modify_pending_order_items(
         order_id,
         request.item_ids,
         request.new_item_ids,
         request.payment_method_id,
-        request.user_id,
+        customer_id,
     )
     return _order_response(order)
 
 
 @router.post("/{order_id}/exchange", response_model=OrderResponse)
 def exchange_order_items(
-    order_id: str, request: ReplaceItemsRequest, service: RetailServiceDep
+    order_id: str,
+    request: ReplaceItemsRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
 ) -> OrderResponse:
     order = service.exchange_delivered_order_items(
         order_id,
         request.item_ids,
         request.new_item_ids,
         request.payment_method_id,
-        request.user_id,
+        customer_id,
     )
     return _order_response(order)
 
 
 @router.post("/{order_id}/return", response_model=OrderResponse)
 def return_order_items(
-    order_id: str, request: OrderActionRequest, service: RetailServiceDep
+    order_id: str,
+    request: OrderActionRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
 ) -> OrderResponse:
     order = service.return_delivered_order_items(
         order_id,
         request.item_ids,
         request.payment_method_id,
-        request.user_id,
+        customer_id,
     )
     return _order_response(order)
+
+
+@router.post("/{order_id}/cancel", response_model=OrderResponse)
+def cancel_order(
+    order_id: str,
+    request: CancelOrderRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
+) -> OrderResponse:
+    return _order_response(
+        service.cancel_pending_order(order_id, request.reason, customer_id)
+    )
+
+
+@router.post("/{order_id}/address", response_model=OrderResponse)
+def modify_order_address(
+    order_id: str,
+    request: AddressRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
+) -> OrderResponse:
+    return _order_response(
+        service.modify_pending_order_address(
+            order_id, request.model_dump(), customer_id
+        )
+    )
+
+
+@router.post("/{order_id}/payment", response_model=OrderResponse)
+def modify_order_payment(
+    order_id: str,
+    request: ChangePaymentRequest,
+    service: RetailServiceDep,
+    customer_id: str = Depends(trusted_agent_customer),
+) -> OrderResponse:
+    return _order_response(
+        service.modify_pending_order_payment(
+            order_id, request.payment_method_id, customer_id
+        )
+    )
