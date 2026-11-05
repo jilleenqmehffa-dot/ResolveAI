@@ -1,5 +1,7 @@
 """Commerce client calls the expected HTTP endpoints and classifies failures."""
 
+import json
+
 import httpx
 import pytest
 
@@ -125,3 +127,63 @@ async def test_direct_client_calls_forward_ids_without_tool_validation() -> None
         assert await client.get_order("o1") == {}
 
     assert requests == ["/products/p1", "/items/sku1", "/orders/o1"]
+
+
+@pytest.mark.asyncio
+async def test_bench_writes_send_identity_header_and_commerce_error_detail() -> None:
+    requests: list[tuple[str, str, dict]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-agent-token"] == "test-agent-token"
+        assert request.headers["x-customer-id"] == "u1"
+        body = json.loads(request.content)
+        assert "user_id" not in body
+        requests.append((request.method, request.url.path, body))
+        if request.url.path.endswith("/cancel"):
+            return httpx.Response(409, json={"detail": "Order must be pending"})
+        return httpx.Response(200, json={"status": "updated"})
+
+    async with CommerceClient(
+        "http://commerce.test",
+        "u1",
+        agent_token="test-agent-token",
+        transport=httpx.MockTransport(respond),
+    ) as client:
+        await client.modify_pending_order_items("o1", ["a"], ["b"], "card1")
+        await client.exchange_delivered_order_items("o1", ["a"], ["b"], "card1")
+        await client.return_delivered_order_items("o1", ["a"], "card1")
+        await client.modify_pending_order_address(
+            "o1",
+            {
+                "address1": "Street",
+                "address2": "",
+                "city": "City",
+                "state": "ST",
+                "country": "USA",
+                "zip": "12345",
+            },
+        )
+        await client.modify_pending_order_payment("o1", "card1")
+        await client.modify_user_address(
+            {
+                "address1": "Street",
+                "address2": "",
+                "city": "City",
+                "state": "ST",
+                "country": "USA",
+                "zip": "12345",
+            }
+        )
+        with pytest.raises(CommerceClientError) as error:
+            await client.cancel_pending_order("o1", "reason")
+    assert error.value.code == "business_conflict"
+    assert str(error.value) == "Order must be pending"
+    assert [path for _, path, _ in requests] == [
+        "/orders/o1/items/modify",
+        "/orders/o1/exchange",
+        "/orders/o1/return",
+        "/orders/o1/address",
+        "/orders/o1/payment",
+        "/customers/u1/address",
+        "/orders/o1/cancel",
+    ]

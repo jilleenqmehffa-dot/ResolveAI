@@ -2,6 +2,7 @@
 
 import json
 from asyncio import sleep
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from time import monotonic
 from typing import Any
@@ -36,16 +37,15 @@ from services.agent_service.app.transport.commer_client import CommerceClientErr
 ContextLoader = Callable[[AgentState], Awaitable[Sequence[BaseMessage]]]
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a retail assistant. Use the available read tools to verify product "
-    "and order facts, including current after-sales case status. Treat tool "
-    "results as the source of truth. A closed case does not by itself prove "
-    "that a refund was paid. "
-    "Only call one tool at a time. You may mark an owned refund-type after-sales "
+    "You are a retail assistant. Use Commerce tools to verify customer, product, "
+    "and order facts before changing records. Treat tool results as the source "
+    "of truth. Only call one tool at a time. Use write tools only for actions "
+    "the customer requested. A closed case does not by itself prove that a refund "
+    "was paid. You may mark an owned refund-type after-sales "
     "case REFUNDED only when the user explicitly requests that case outcome. "
     "This changes the case record, not the payment ledger; never claim that "
     "funds were paid solely from the case result. If a write result is unknown, "
-    "say it needs verification and do not claim success. "
-    "Do not claim an order was changed."
+    "say it needs verification and do not claim success."
 )
 
 
@@ -166,6 +166,82 @@ class AgentNodes:
             return BusinessResult.NOT_APPLIED, data
         return BusinessResult.UNKNOWN, data
 
+    async def _verify_write(
+        self, name: str, args: dict[str, Any]
+    ) -> tuple[BusinessResult, dict[str, Any] | None]:
+        if name == "mark_after_sales_refunded":
+            return await self._verify_refund_write(args["case_id"])
+        reader = "get_customer" if name == "modify_user_address" else "get_order"
+        read_args = {} if reader == "get_customer" else {"order_id": args["order_id"]}
+        try:
+            data = await self._tools[reader].ainvoke(read_args)
+        except CommerceClientError:
+            return BusinessResult.UNKNOWN, None
+        if not isinstance(data, dict):
+            return BusinessResult.UNKNOWN, None
+        address_fields = ("address1", "address2", "city", "state", "country", "zip")
+        if name in ("modify_user_address", "modify_pending_order_address"):
+            address = data.get("address")
+            applied = isinstance(address, dict) and all(
+                address.get(field) == args[field] for field in address_fields
+            )
+            if name == "modify_pending_order_address":
+                applied = applied and data.get("status") == "pending (address modified)"
+        elif name == "cancel_pending_order":
+            applied = (
+                data.get("status") == "cancelled"
+                and data.get("cancel_reason") == args["reason"].strip()
+            )
+        elif name == "modify_pending_order_payment":
+            payments = [
+                p
+                for p in data.get("payment_history", [])
+                if p.get("transaction_type") == "payment"
+            ]
+            applied = (
+                data.get("status") == "pending (payment modified)"
+                and bool(payments)
+                and all(
+                    p.get("payment_method_id") == args["payment_method_id"]
+                    for p in payments
+                )
+            )
+        elif name == "modify_pending_order_items":
+            items = data.get("items", [])
+            applied = data.get("status") == "pending (item modified)" and (
+                Counter(item.get("item_id") for item in items)
+                >= Counter(args["new_item_ids"])
+            )
+        elif name == "exchange_delivered_order_items":
+            if len(args["item_ids"]) != len(args["new_item_ids"]):
+                return BusinessResult.UNKNOWN, data
+            expected = Counter(zip(args["item_ids"], args["new_item_ids"], strict=True))
+            actual = Counter(
+                (item.get("old_item_id"), item.get("new_item_id"))
+                for item in data.get("exchange_items", [])
+            )
+            applied = data.get("status") == "exchange requested" and actual >= expected
+        elif name == "return_delivered_order_items":
+            actual = Counter(
+                item.get("item_id") for item in data.get("return_items", [])
+            )
+            applied = data.get("status") == "return requested" and actual >= Counter(
+                args["item_ids"]
+            )
+        else:
+            return BusinessResult.UNKNOWN, data
+        if applied:
+            return BusinessResult.APPLIED, data
+        original_status = (
+            "delivered"
+            if name
+            in ("return_delivered_order_items", "exchange_delivered_order_items")
+            else "pending"
+        )
+        if name == "modify_user_address" or data.get("status") == original_status:
+            return BusinessResult.NOT_APPLIED, data
+        return BusinessResult.UNKNOWN, data
+
     async def tools(self, state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         """Dispatch one approved call and verify uncertain writes before retry."""
         if route_after_guard(state) != "approved":
@@ -195,8 +271,8 @@ class AgentNodes:
                     max_attempts=manager.policy.max_attempts,
                 )
                 if is_write and record.status is ToolExecutionStatus.UNKNOWN:
-                    verified, verified_data = await self._verify_refund_write(
-                        call["args"]["case_id"]
+                    verified, verified_data = await self._verify_write(
+                        call["name"], call["args"]
                     )
                     decision = manager.decide_verified_write(
                         verified,

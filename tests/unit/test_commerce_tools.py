@@ -6,11 +6,17 @@ from pydantic import ValidationError
 
 from services.agent_service.app.agents.tools import create_commerce_tools
 from services.agent_service.app.agents.tools.schemas import (
+    AddressArgs,
+    CancelOrderArgs,
+    ChangeOrderPaymentArgs,
     EmptyToolArgs,
     GetAfterSalesCaseArgs,
     GetItemArgs,
     GetOrderArgs,
     GetProductArgs,
+    OrderAddressArgs,
+    ReplaceOrderItemsArgs,
+    ReturnOrderItemsArgs,
 )
 from services.agent_service.app.transport.commer_client import (
     CommerceClient,
@@ -61,6 +67,14 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "list_after_sales_cases",
             "get_after_sales_case",
             "mark_after_sales_refunded",
+            "get_customer",
+            "modify_pending_order_items",
+            "exchange_delivered_order_items",
+            "return_delivered_order_items",
+            "cancel_pending_order",
+            "modify_pending_order_address",
+            "modify_pending_order_payment",
+            "modify_user_address",
         }
         assert tools["list_orders"].args == {}
         assert set(tools["get_order"].args) == {"order_id"}
@@ -73,6 +87,14 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
             "list_after_sales_cases": EmptyToolArgs,
             "get_after_sales_case": GetAfterSalesCaseArgs,
             "mark_after_sales_refunded": GetAfterSalesCaseArgs,
+            "get_customer": EmptyToolArgs,
+            "modify_pending_order_items": ReplaceOrderItemsArgs,
+            "exchange_delivered_order_items": ReplaceOrderItemsArgs,
+            "return_delivered_order_items": ReturnOrderItemsArgs,
+            "cancel_pending_order": CancelOrderArgs,
+            "modify_pending_order_address": OrderAddressArgs,
+            "modify_pending_order_payment": ChangeOrderPaymentArgs,
+            "modify_user_address": AddressArgs,
         }
 
         assert await tools["list_products"].ainvoke({}) == [{"id": "one"}]

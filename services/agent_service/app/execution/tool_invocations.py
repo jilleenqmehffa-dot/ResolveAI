@@ -15,7 +15,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from services.agent_service.app.models.agent import ToolExecution, ToolExecutionStatus
 
-WRITE_TOOL_NAMES = frozenset({"mark_after_sales_refunded"})
+WRITE_TOOL_NAMES = frozenset(
+    {
+        "mark_after_sales_refunded",
+        "modify_pending_order_items",
+        "exchange_delivered_order_items",
+        "return_delivered_order_items",
+        "cancel_pending_order",
+        "modify_pending_order_address",
+        "modify_pending_order_payment",
+        "modify_user_address",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)

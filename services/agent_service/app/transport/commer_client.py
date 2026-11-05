@@ -1,4 +1,4 @@
-"""Read-only Commerce HTTP adapter for Agent tools.
+"""Commerce HTTP adapter for Agent tools.
 
 Create one client per authenticated user context. The user ID must come from
 the Agent execution context, not from an LLM-generated tool argument.
@@ -23,7 +23,7 @@ class CommerceClientError(Exception):
 
 
 class CommerceClient:
-    """Expose user-scoped Commerce reads through its public API."""
+    """Expose user-scoped Commerce operations through its public API."""
 
     def __init__(
         self,
@@ -87,9 +87,15 @@ class CommerceClient:
                 code = "transient_error"
             else:
                 code = "http_error"
+            try:
+                detail = response.json().get("detail")
+            except (ValueError, AttributeError):
+                detail = None
             raise CommerceClientError(
                 code,
-                f"Commerce request failed with HTTP {response.status_code}",
+                str(detail)
+                if detail
+                else f"Commerce request failed with HTTP {response.status_code}",
                 retryable=code == "transient_error",
                 status_code=response.status_code,
             )
@@ -155,6 +161,108 @@ class CommerceClient:
                     "X-Agent-Token": self.agent_token,
                     "X-Customer-ID": self.user_id,
                 },
+            ),
+        )
+
+    def _write_headers(self) -> dict[str, str]:
+        if not self.agent_token:
+            raise RuntimeError("Agent token is required for Commerce writes")
+        return {"X-Agent-Token": self.agent_token, "X-Customer-ID": self.user_id}
+
+    async def _order_write(
+        self, order_id: str, suffix: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "POST",
+                f"/orders/{self._path_id(order_id)}/{suffix}",
+                json_body=body,
+                headers=self._write_headers(),
+            ),
+        )
+
+    async def modify_pending_order_items(
+        self,
+        order_id: str,
+        item_ids: list[str],
+        new_item_ids: list[str],
+        payment_method_id: str,
+    ) -> dict[str, Any]:
+        return await self._order_write(
+            order_id,
+            "items/modify",
+            {
+                "item_ids": item_ids,
+                "new_item_ids": new_item_ids,
+                "payment_method_id": payment_method_id,
+            },
+        )
+
+    async def exchange_delivered_order_items(
+        self,
+        order_id: str,
+        item_ids: list[str],
+        new_item_ids: list[str],
+        payment_method_id: str,
+    ) -> dict[str, Any]:
+        return await self._order_write(
+            order_id,
+            "exchange",
+            {
+                "item_ids": item_ids,
+                "new_item_ids": new_item_ids,
+                "payment_method_id": payment_method_id,
+            },
+        )
+
+    async def return_delivered_order_items(
+        self,
+        order_id: str,
+        item_ids: list[str],
+        payment_method_id: str,
+    ) -> dict[str, Any]:
+        return await self._order_write(
+            order_id,
+            "return",
+            {
+                "item_ids": item_ids,
+                "payment_method_id": payment_method_id,
+            },
+        )
+
+    async def cancel_pending_order(self, order_id: str, reason: str) -> dict[str, Any]:
+        return await self._order_write(order_id, "cancel", {"reason": reason})
+
+    async def modify_pending_order_address(
+        self, order_id: str, address: dict[str, str]
+    ) -> dict[str, Any]:
+        return await self._order_write(order_id, "address", address)
+
+    async def modify_pending_order_payment(
+        self, order_id: str, payment_method_id: str
+    ) -> dict[str, Any]:
+        return await self._order_write(
+            order_id,
+            "payment",
+            {
+                "payment_method_id": payment_method_id,
+            },
+        )
+
+    async def get_customer(self) -> dict[str, Any]:
+        return cast(
+            dict[str, Any], await self._get(f"/customers/{self._path_id(self.user_id)}")
+        )
+
+    async def modify_user_address(self, address: dict[str, str]) -> dict[str, Any]:
+        return cast(
+            dict[str, Any],
+            await self._request(
+                "POST",
+                f"/customers/{self._path_id(self.user_id)}/address",
+                json_body=address,
+                headers=self._write_headers(),
             ),
         )
 

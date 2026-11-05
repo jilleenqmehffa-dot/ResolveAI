@@ -37,3 +37,35 @@ class GetAfterSalesCaseArgs(ToolArgs):
     case_id: str = Field(
         min_length=1, description="Case ID from list_after_sales_cases"
     )
+
+
+class ReplaceOrderItemsArgs(GetOrderArgs):
+    item_ids: list[str] = Field(min_length=1)
+    new_item_ids: list[str] = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+
+
+class ReturnOrderItemsArgs(GetOrderArgs):
+    item_ids: list[str] = Field(min_length=1)
+    payment_method_id: str = Field(min_length=1)
+
+
+class CancelOrderArgs(GetOrderArgs):
+    reason: str = Field(min_length=1)
+
+
+class AddressArgs(ToolArgs):
+    address1: str
+    address2: str
+    city: str
+    state: str
+    country: str
+    zip: str
+
+
+class OrderAddressArgs(GetOrderArgs, AddressArgs):
+    pass
+
+
+class ChangeOrderPaymentArgs(GetOrderArgs):
+    payment_method_id: str = Field(min_length=1)
