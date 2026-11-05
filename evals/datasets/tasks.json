@@ -193,6 +193,7 @@
                     "arguments": {
                         "product_id": "6086499569"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -322,6 +323,7 @@
                     "arguments": {
                         "product_id": "6086499569"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -460,6 +462,7 @@
                     "arguments": {
                         "product_id": "6086499569"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -4537,6 +4540,7 @@
                     "arguments": {
                         "order_id": "#9502126"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -4545,6 +4549,7 @@
                     "arguments": {
                         "order_id": "#9502127"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -4635,6 +4640,7 @@
                     "arguments": {
                         "order_id": "#9502126"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
@@ -4643,6 +4649,7 @@
                     "arguments": {
                         "order_id": "#9502127"
                     },
+                    "expected_outcome": "not_found",
                     "info": null
                 },
                 {
