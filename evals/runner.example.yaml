@@ -1,0 +1,13 @@
+tasks: evals/datasets/tasks.json
+split_file: evals/datasets/split_tasks.json
+split: test
+database: evals/datasets/db.json
+env_file: .env
+agent_base_url: http://127.0.0.1:8000
+commerce_base_url: http://127.0.0.1:8001
+langsmith_project: resolveai
+concurrency: 1
+request_timeout: 10
+poll_interval: 1
+wait_timeout: 180
+trace_timeout: 30

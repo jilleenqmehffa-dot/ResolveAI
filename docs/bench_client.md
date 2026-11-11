@@ -1,5 +1,38 @@
 # Bench 并发客户端
 
+## 完整测评启动器
+
+从仓库根目录运行：
+
+```bash
+.venv/bin/python -m evals.runner --config evals/runner.example.yaml --task-id 12 --output result-12.json
+```
+
+`--task-id` 只测指定 ID 的一题，即使该题不在配置的 `split` 中也能运行。
+启动器必须明确指定 `--task-id` 或 `--all`，避免误跑整批任务。
+批量测评时运行：
+
+```bash
+.venv/bin/python -m evals.runner --config evals/runner.example.yaml --all --output results.json
+```
+
+配置示例位于 `evals/runner.example.yaml`，明确指定 `tasks.json` 和
+`split_tasks.json` 的 `test` 划分，因此 `--all` 会测评测试集 40 题。
+`--tasks` 可覆盖配置，直接测评指定 JSON 数组中的全部任务，此时不应用配置的划分。
+Bench 任务字段从
+`user_scenario.instructions` 映射为客户与消息；自定义任务也可直接提供
+`id`、`customer_id`、`message`、`evaluation_criteria`。Bench 身份解析使用
+配置的 `database` JSON。运行前需启动 Agent、Commerce，导入基准数据，并配置
+`.env` 的 `AGENT_INTERNAL_TOKEN` 和可读取 trace 的 LangSmith Key。
+
+调用链为任务加载 → `CommerceAdapter` 采集执行前状态 → Agent 提交与等待 →
+采集执行后状态 → `TraceAdapter` 读取 trace → 两个 Normalizer →
+`TaskSuccessEvaluator` 和 `TrajectoryEvaluator`。`concurrency` 默认 1；
+对共享同一业务库且会写入的任务，保持 1 并从一致的初始数据运行，以免题目之间
+相互影响。启动器按输入顺序写出 JSON 数组；每项包含 `task_id`、`customer_id`、
+`execution_id`、执行 `status`、`scores`、`reasons`、`error`，成功评分时另有
+`details` 保存两个评分器的原始结构化结果。单题失败仍保留对应位置的错误项。
+
 `evals/clients/benchmark_client.py` 从 `evals/datasets/tasks.json` 读取场景、从
 `evals/datasets/split_tasks.json` 选择任务，并用 `evals/datasets/db.json` 将场景中的邮箱、
 用户 ID、订单号或姓名加邮编解析为 Commerce 客户 ID。发送给 Agent 的消息只包含
@@ -75,8 +108,8 @@ from evals.adapter.trace_adapter import TraceAdapter
 traces = TraceAdapter().wait_for_traces(execution_id, timeout=30)
 ```
 
-读取需要具有项目和 run 读取权限的 Key。可设置 `LANGSMITH_READ_API_KEY`；
-未设置时适配器回退使用 `LANGSMITH_API_KEY`。仅有 trace 写入权限的 Key 无法读取。
+读取使用 `LANGSMITH_API_KEY`，该 Key 需要具有项目和 run 读取权限。
+仅有 trace 写入权限的 Key 无法读取。
 项目名读取 `LANGSMITH_PROJECT`，默认从仓库根目录 `.env` 获取。
 
 ## 规范化评测输入

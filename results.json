@@ -1,0 +1,807 @@
+[
+  {
+    "task_id": "5",
+    "customer_id": "mei_kovacs_8020",
+    "execution_id": "48e310c6-66c0-463e-b12a-7edb7c25c599",
+    "status": "TIMED_OUT",
+    "scores": null,
+    "reasons": [
+      "execution_timeout"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "execution_timeout"
+    }
+  },
+  {
+    "task_id": "9",
+    "customer_id": "mei_kovacs_8020",
+    "execution_id": "62215116-5750-4af7-a09a-36e509c3673f",
+    "status": "TIMED_OUT",
+    "scores": null,
+    "reasons": [
+      "execution_timeout"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "execution_timeout"
+    }
+  },
+  {
+    "task_id": "12",
+    "customer_id": "mia_garcia_4516",
+    "execution_id": "9d9bf5d7-ddcc-4023-916c-44c03c507eca",
+    "status": "SUCCEEDED",
+    "scores": {
+      "task_success": 1.0,
+      "trajectory": 0.75
+    },
+    "reasons": [
+      "unexpected write 01a1c5f9-e2a4-7e61-9e86-a1df8b0919f1",
+      "unsupported action 12_0",
+      "unsupported action 12_4"
+    ],
+    "error": null,
+    "details": {
+      "task_success": {
+        "task_id": "12",
+        "score": 1.0,
+        "db_success": true,
+        "nl_required": false,
+        "nl_success": null,
+        "db_checks": [
+          {
+            "name": "unrelated_order:#W5490111",
+            "passed": true,
+            "detail": "Unrelated order must not change"
+          },
+          {
+            "name": "unrelated_order:#W7387996",
+            "passed": true,
+            "detail": "Unrelated order must not change"
+          },
+          {
+            "name": "customer",
+            "passed": true,
+            "detail": "Customer profile must not change"
+          },
+          {
+            "name": "payment_method:credit_card_3124723",
+            "passed": true,
+            "detail": "Unrelated payment method must not change"
+          },
+          {
+            "name": "payment_method:paypal_9497703",
+            "passed": true,
+            "detail": "Unrelated payment method must not change"
+          },
+          {
+            "name": "catalog.products",
+            "passed": true,
+            "detail": "Product catalog must not change"
+          },
+          {
+            "name": "catalog.items",
+            "passed": true,
+            "detail": "Product variants must not change"
+          }
+        ],
+        "nl_checks": []
+      },
+      "trajectory": {
+        "task_id": "12",
+        "score": 0.75,
+        "supported_actions": 3,
+        "matches": [
+          {
+            "action_id": "12_1",
+            "expected_tool": "get_customer",
+            "matched_run_id": "01a1c5f9-a04a-7e53-bf5d-bdb5111298cc"
+          },
+          {
+            "action_id": "12_2",
+            "expected_tool": "get_order",
+            "matched_run_id": "01a1c5f9-a684-7a02-a6b6-d10ccee5b0db"
+          },
+          {
+            "action_id": "12_3",
+            "expected_tool": "get_order",
+            "matched_run_id": "01a1c5f9-ab23-7272-a78b-68d4ba2a449d"
+          }
+        ],
+        "unsupported_actions": [
+          "12_0",
+          "12_4"
+        ],
+        "extra_write_run_ids": [
+          "01a1c5f9-e2a4-7e61-9e86-a1df8b0919f1"
+        ],
+        "failed_run_ids": [
+          "01a1c5f9-e2a4-7e61-9e86-a1df8b0919f1"
+        ]
+      }
+    }
+  },
+  {
+    "task_id": "17",
+    "customer_id": "fatima_johnson_7581",
+    "execution_id": "b89fa1d8-c071-4b2d-8fe6-e22738fcdcdd",
+    "status": "SUCCEEDED",
+    "scores": {
+      "task_success": 1.0,
+      "trajectory": 0.0
+    },
+    "reasons": [
+      "missing action 17_1",
+      "missing action 17_2",
+      "missing action 17_3",
+      "missing action 17_4",
+      "missing action 17_5",
+      "unsupported action 17_0"
+    ],
+    "error": null,
+    "details": {
+      "task_success": {
+        "task_id": "17",
+        "score": 1.0,
+        "db_success": true,
+        "nl_required": false,
+        "nl_success": null,
+        "db_checks": [
+          {
+            "name": "#W8665881.order_status",
+            "passed": true,
+            "detail": "Expected Commerce state"
+          },
+          {
+            "name": "#W8665881.address",
+            "passed": true,
+            "detail": "Expected Commerce state"
+          },
+          {
+            "name": "#W8665881.unchanged:payment_history",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:exchange_items",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:exchange_price_difference",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:return_payment_method_id",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:order_position",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:customer_id",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:items",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:fulfillments",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:exchange_payment_method_id",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:cancel_reason",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:return_items",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:order_id",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "#W8665881.unchanged:return_estimated_refund",
+            "passed": true,
+            "detail": "Unrequested order field must not change"
+          },
+          {
+            "name": "unrelated_order:#W9389413",
+            "passed": true,
+            "detail": "Unrelated order must not change"
+          },
+          {
+            "name": "unrelated_order:#W5199551",
+            "passed": true,
+            "detail": "Unrelated order must not change"
+          },
+          {
+            "name": "customer",
+            "passed": true,
+            "detail": "Customer profile must not change"
+          },
+          {
+            "name": "payment_method:paypal_5364164",
+            "passed": true,
+            "detail": "Unrelated payment method must not change"
+          },
+          {
+            "name": "payment_method:gift_card_1675628",
+            "passed": true,
+            "detail": "Unrelated payment method must not change"
+          },
+          {
+            "name": "catalog.products",
+            "passed": true,
+            "detail": "Product catalog must not change"
+          },
+          {
+            "name": "catalog.items",
+            "passed": true,
+            "detail": "Product variants must not change"
+          }
+        ],
+        "nl_checks": []
+      },
+      "trajectory": {
+        "task_id": "17",
+        "score": 0.0,
+        "supported_actions": 5,
+        "matches": [
+          {
+            "action_id": "17_1",
+            "expected_tool": "get_customer",
+            "matched_run_id": null
+          },
+          {
+            "action_id": "17_2",
+            "expected_tool": "get_order",
+            "matched_run_id": null
+          },
+          {
+            "action_id": "17_3",
+            "expected_tool": "get_order",
+            "matched_run_id": null
+          },
+          {
+            "action_id": "17_4",
+            "expected_tool": "get_order",
+            "matched_run_id": null
+          },
+          {
+            "action_id": "17_5",
+            "expected_tool": "modify_pending_order_address",
+            "matched_run_id": null
+          }
+        ],
+        "unsupported_actions": [
+          "17_0"
+        ],
+        "extra_write_run_ids": [],
+        "failed_run_ids": []
+      }
+    }
+  },
+  {
+    "task_id": "18",
+    "customer_id": "mei_davis_8935",
+    "execution_id": "af3cca0f-f3cd-49f4-86ba-b862e5680bb9",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "26",
+    "customer_id": "isabella_johansson_2152",
+    "execution_id": "50493b38-a85c-4f4e-ba0b-98564a22e363",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "27",
+    "customer_id": "isabella_johansson_2152",
+    "execution_id": "72462d35-88e8-4ca9-bee6-bd69afdbf628",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "32",
+    "customer_id": "olivia_lopez_3865",
+    "execution_id": "9329f7d7-5d8a-4f64-821d-d6d2ecb73a75",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "33",
+    "customer_id": "noah_patel_6952",
+    "execution_id": "4a6a6b94-32ee-4d33-ab85-894ecdf78e23",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "36",
+    "customer_id": "daiki_sanchez_3253",
+    "execution_id": "aa386519-2cf1-426e-a9ef-7a127031925e",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "38",
+    "customer_id": "daiki_sanchez_3253",
+    "execution_id": "b4f5ac64-885a-489f-a8bb-3e77d9dda85e",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "39",
+    "customer_id": "fatima_taylor_3452",
+    "execution_id": "c4efd4a0-3476-479b-9c0d-1e5012dec8c5",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "40",
+    "customer_id": "isabella_lopez_6490",
+    "execution_id": "9f2e9dfc-7a91-4401-af59-02f78facdf9f",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "42",
+    "customer_id": "mei_patel_7272",
+    "execution_id": "d57b84a1-acee-4170-acfc-bc30373b7bc5",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "45",
+    "customer_id": "daiki_johnson_9523",
+    "execution_id": "67635e78-13fc-4000-b2ee-8d085dbbf5e5",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "49",
+    "customer_id": "aarav_anderson_8794",
+    "execution_id": "299cac10-5f12-48ab-a5a1-3c25edb2b60a",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "51",
+    "customer_id": "sofia_li_9219",
+    "execution_id": "b1f03f5c-725e-42e5-89aa-e81bdcfde95c",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "53",
+    "customer_id": "sofia_li_9219",
+    "execution_id": "e3f8a676-f02a-4ff7-83bb-51f8a3de5fac",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "55",
+    "customer_id": "amelia_silva_7726",
+    "execution_id": "78e6c37a-02da-4933-958d-b0b144b86930",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "56",
+    "customer_id": "ivan_hernandez_6923",
+    "execution_id": "23ad27a8-23f1-4155-a8b0-0427cd3195ca",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "60",
+    "customer_id": "chen_johnson_4204",
+    "execution_id": "436095d1-cc2a-4cf8-9d85-afa289f0c8a4",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "61",
+    "customer_id": "chen_johnson_4204",
+    "execution_id": "7e5a00e5-f1a3-4a64-8c04-6fcced04c153",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "62",
+    "customer_id": "chen_johnson_4204",
+    "execution_id": "678a6f5f-053c-4c74-b6ed-50d485d0d776",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "64",
+    "customer_id": "james_sanchez_3954",
+    "execution_id": "bd33885b-edf9-44f7-9f7a-71a1c3170e15",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "65",
+    "customer_id": "james_kovacs_9247",
+    "execution_id": "6ea832b2-2b74-4009-85de-d54f588cb312",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "68",
+    "customer_id": "noah_ito_3850",
+    "execution_id": "d5b11364-e367-4fb8-9e91-87d226c55596",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "70",
+    "customer_id": "sofia_hernandez_5364",
+    "execution_id": "d8b59688-d51e-4fe9-8c42-112a40204210",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "71",
+    "customer_id": "ivan_khan_7475",
+    "execution_id": "8578157f-183c-4c98-9d48-e33b186084d4",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "74",
+    "customer_id": "lei_li_6575",
+    "execution_id": "01882ec9-6570-442d-8592-57e17c36087f",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "77",
+    "customer_id": "ivan_johnson_6036",
+    "execution_id": "08c9a412-8635-4af7-82a4-3bef03db679e",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "79",
+    "customer_id": "emma_kovacs_9839",
+    "execution_id": "3f8b2c27-b132-4bdd-b9bc-e3fa391a555a",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "86",
+    "customer_id": "yusuf_hernandez_6785",
+    "execution_id": "82831a04-228d-44be-b001-d67c5cbd6236",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "90",
+    "customer_id": "emma_kovacs_9839",
+    "execution_id": "966150be-d18a-43f5-abd5-6837e58fb354",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "94",
+    "customer_id": "lei_wilson_4541",
+    "execution_id": "3a358b49-aa0a-4881-a81a-a98942bb4b85",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "97",
+    "customer_id": "yusuf_li_7255",
+    "execution_id": "396cf4e3-46ee-4e61-beea-6e39e3c0892c",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "100",
+    "customer_id": "liam_thomas_7882",
+    "execution_id": "12b43965-5a82-4410-8ce7-68fd1e061fbb",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "101",
+    "customer_id": "noah_ito_3850",
+    "execution_id": "10425ee6-46b7-4a84-9131-f0014fb71aab",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "102",
+    "customer_id": "noah_ito_3850",
+    "execution_id": "6187cbfc-ccf3-4ce2-9a16-b0a6b1102252",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "108",
+    "customer_id": "yusuf_gonzalez_8900",
+    "execution_id": "e06f73ec-d03f-4a70-bb9b-fca39f7e9b3b",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  },
+  {
+    "task_id": "111",
+    "customer_id": "yara_silva_7567",
+    "execution_id": "2e5d78e4-a599-4fb9-8431-0ae3a333313c",
+    "status": "FAILED",
+    "scores": null,
+    "reasons": [
+      "APIStatusError"
+    ],
+    "error": {
+      "type": "RuntimeError",
+      "message": "APIStatusError"
+    }
+  }
+]

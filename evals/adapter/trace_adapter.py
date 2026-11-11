@@ -79,11 +79,9 @@ class TraceAdapter:
         if not self.project:
             raise ValueError("LANGSMITH_PROJECT is required to read traces")
         if client is None:
-            api_key = _setting("LANGSMITH_READ_API_KEY") or _setting(
-                "LANGSMITH_API_KEY"
-            )
+            api_key = _setting("LANGSMITH_API_KEY")
             if not api_key:
-                raise ValueError("A LangSmith read API key is required")
+                raise ValueError("LANGSMITH_API_KEY is required to read traces")
             client = Client(
                 api_key=api_key,
                 api_url=_setting("LANGSMITH_ENDPOINT"),

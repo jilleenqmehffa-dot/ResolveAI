@@ -18,6 +18,7 @@ dependencies = [
     "celery>=5.6.3",
     "langgraph-checkpoint-postgres>=3.2.0",
     "langsmith>=0.14.11",
+    "PyYAML>=6.0",
 ]
 
 [dependency-groups]

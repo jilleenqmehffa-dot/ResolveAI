@@ -83,3 +83,18 @@ def test_invalid_execution_id_is_rejected() -> None:
     adapter = TraceAdapter(project="bench", client=object())
     with pytest.raises(ValueError):
         adapter.list_traces("not-a-uuid")
+
+
+def test_trace_adapter_uses_langsmith_api_key(monkeypatch) -> None:
+    client_args = {}
+
+    def fake_client(**kwargs):
+        client_args.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("LANGSMITH_API_KEY", "shared-key")
+    monkeypatch.setattr("evals.adapter.trace_adapter.Client", fake_client)
+
+    TraceAdapter(project="bench")
+
+    assert client_args["api_key"] == "shared-key"
