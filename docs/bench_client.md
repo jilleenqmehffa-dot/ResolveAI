@@ -8,6 +8,16 @@
 .venv/bin/python -m evals.runner --config evals/runner.example.yaml --task-id 12 --output result-12.json
 ```
 
+在不调用 DeepSeek 的情况下验证完整任务链路：
+
+```bash
+.venv/bin/python -m evals.runner --config evals/runner.example.yaml --task-id 12 --llm-backend mock --output /tmp/result-12-mock.json
+```
+
+`--llm-backend` 可选 `mock` 或 `deepseek`（默认）。该选项随 `/chat` 请求保存到
+Agent 执行记录，Worker 据此选择模型。`mock` 只回复固定文字、不调用工具，
+因此业务正确率通常很低；它用于检查执行和测评链路。完整评分仍需 LangSmith trace。
+
 `--task-id` 只测指定 ID 的一题，即使该题不在配置的 `split` 中也能运行。
 启动器必须明确指定 `--task-id` 或 `--all`，避免误跑整批任务。
 批量测评时运行：
@@ -44,6 +54,7 @@ Bench 任务字段从
 ID 生成幂等键；`--repeat` 会重复场景，但每次重复仍使用独立会话和幂等键。
 默认提交 `test` 划分的全部 40 条任务，最大同时处理 10 条。提交成功只表示 Agent
 接受任务；加 `--wait` 才会轮询最终状态。
+该客户端也支持 `--llm-backend mock`，用于无模型 token 的并发执行测试。
 
 从仓库根目录运行：
 

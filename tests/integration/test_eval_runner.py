@@ -44,11 +44,13 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "token")
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
+    seen_backends = []
 
     async def handler(request):
         if request.url.path == "/conversations":
             return httpx.Response(201, json={"conversation_id": str(uuid4())})
         if request.url.path == "/chat":
+            seen_backends.append(json.loads(request.content)["llm_backend"])
             return httpx.Response(202, json={"execution_id": str(uuid4()), "status": "QUEUED"})
         return httpx.Response(200, json={"status": "SUCCEEDED"})
 
@@ -90,6 +92,7 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
     assert rows[0]["scores"] == {"task_success": 1.0, "trajectory": 1.0}
     assert rows[0]["error"] is None
     assert rows[1]["error"]["type"] == "KeyError"
+    assert seen_backends == ["deepseek"]
     run_files = list((tmp_path / "runs").glob("*.json"))
     assert len(run_files) == 1
     run_record = json.loads(run_files[0].read_text(encoding="utf-8"))
@@ -104,10 +107,13 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     assert runner.main([
-        "--config", str(config_path), "--task-id", "first", "--output", str(output)
+        "--config", str(config_path), "--task-id", "first", "--output", str(output),
+        "--llm-backend", "mock",
     ]) == 0
     rows = json.loads(output.read_text(encoding="utf-8"))
     assert [row["task_id"] for row in rows] == ["first"]
+    assert seen_backends == ["deepseek", "mock"]
+    assert {json.loads(path.read_text())["llm_backend"] for path in (tmp_path / "runs").glob("*.json")} == {"deepseek", "mock"}
 
     with pytest.raises(SystemExit):
         runner.main([

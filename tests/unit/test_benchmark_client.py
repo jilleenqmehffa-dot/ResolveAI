@@ -40,6 +40,7 @@ def test_concurrent_submission_uses_separate_conversations_and_keys(monkeypatch)
         active -= 1
         payload = json.loads(request.content)
         assert payload["message"]
+        assert payload["llm_backend"] == "mock"
         assert payload["idempotency_key"] not in seen_keys
         seen_keys.add(payload["idempotency_key"])
         return httpx.Response(
@@ -61,6 +62,7 @@ def test_concurrent_submission_uses_separate_conversations_and_keys(monkeypatch)
         wait=False,
         poll_interval=0.01,
         wait_timeout=1,
+        llm_backend="mock",
     )
     cases = [BenchCase("1", "user-one", "first"), BenchCase("2", "user-two", "second")]
     results = asyncio.run(load_client.run(args, cases, "test-token"))

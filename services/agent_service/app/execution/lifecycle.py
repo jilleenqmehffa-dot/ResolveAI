@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from services.agent_service.app.agents.llm.types import LLMBackend
 from services.agent_service.app.models.agent import (
     AgentRun,
     AgentRunStatus,
@@ -27,6 +28,10 @@ TERMINAL = frozenset(
 )
 
 
+class IdempotencyBackendConflict(ValueError):
+    """The same idempotency key cannot select two different model backends."""
+
+
 @dataclass(frozen=True, slots=True)
 class ClaimedRun:
     run_id: UUID
@@ -34,6 +39,7 @@ class ClaimedRun:
     trigger_message_id: UUID
     customer_id: str
     user_message: str
+    llm_backend: LLMBackend
     lease_token: str
     attempt_count: int
     created_at: datetime
@@ -49,10 +55,12 @@ def submit_run(
     content: str,
     idempotency_key: str,
     total_timeout_seconds: float,
+    llm_backend: LLMBackend | str = LLMBackend.DEEPSEEK,
 ) -> UUID:
     """Create one run per conversation/key while holding the conversation lock."""
     if not content.strip() or not idempotency_key.strip() or total_timeout_seconds <= 0:
         raise ValueError("message, idempotency key, and timeout are required")
+    selected_backend = LLMBackend(llm_backend)
     with sessions() as session, session.begin():
         conversation = session.get(Conversation, conversation_id, with_for_update=True)
         if conversation is None or conversation.customer_id != customer_id:
@@ -64,6 +72,8 @@ def submit_run(
             )
         )
         if existing is not None:
+            if existing.llm_backend != selected_backend.value:
+                raise IdempotencyBackendConflict("idempotency key has a different LLM backend")
             return existing.id
         seq = conversation.next_message_seq
         conversation.next_message_seq += 1
@@ -79,6 +89,7 @@ def submit_run(
             conversation_id=conversation_id,
             trigger_message_id=message.id,
             idempotency_key=idempotency_key,
+            llm_backend=selected_backend.value,
             status=AgentRunStatus.QUEUED,
             deadline_at=datetime.now(UTC) + timedelta(seconds=total_timeout_seconds),
         )
@@ -148,6 +159,7 @@ def claim_run(
             trigger_message_id=run.trigger_message_id,
             customer_id=conversation.customer_id,
             user_message=message.content,
+            llm_backend=LLMBackend(run.llm_backend),
             lease_token=token,
             attempt_count=run.attempt_count,
             created_at=run.created_at,

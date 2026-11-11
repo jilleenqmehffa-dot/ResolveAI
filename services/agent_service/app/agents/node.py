@@ -91,7 +91,7 @@ class AgentNodes:
         }
 
     async def agent(self, state: AgentState) -> dict[str, Any]:
-        """Ask DeepSeek for either one tool call or a final answer."""
+        """Ask the selected model for either one tool call or a final answer."""
         response = await self._model.ainvoke(state["messages"])
         if not isinstance(response, AIMessage):
             raise TypeError("agent model must return an AIMessage")

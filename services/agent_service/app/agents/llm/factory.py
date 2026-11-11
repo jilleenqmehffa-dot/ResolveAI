@@ -1,7 +1,10 @@
 """Create the DeepSeek chat model used by the Agent graph."""
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_deepseek import ChatDeepSeek
 
+from services.agent_service.app.agents.llm.mock import MockChatModel
+from services.agent_service.app.agents.llm.types import LLMBackend
 from services.agent_service.app.core.config import get_settings
 
 
@@ -33,3 +36,11 @@ def create_deepseek_model(
         timeout=timeout,
         max_retries=max_retries,
     )
+
+
+def create_chat_model(backend: LLMBackend | str = LLMBackend.DEEPSEEK) -> BaseChatModel:
+    """Select a local mock or the configured DeepSeek chat model."""
+    selected = LLMBackend(backend)
+    if selected is LLMBackend.MOCK:
+        return MockChatModel()
+    return create_deepseek_model()

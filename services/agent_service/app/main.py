@@ -13,9 +13,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from services.agent_service.app.agents.llm.types import LLMBackend
 from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.db.session import get_agent_session_factory
-from services.agent_service.app.execution.lifecycle import cancel_run, submit_run
+from services.agent_service.app.execution.lifecycle import (
+    IdempotencyBackendConflict,
+    cancel_run,
+    submit_run,
+)
 from services.agent_service.app.models.agent import (
     AgentRun,
     AgentRunStatus,
@@ -28,12 +33,14 @@ class ChatRequest(BaseModel):
     conversation_id: UUID
     message: str = Field(min_length=1)
     idempotency_key: str = Field(min_length=1, max_length=255)
+    llm_backend: LLMBackend = LLMBackend.DEEPSEEK
 
 
 class RunResponse(BaseModel):
     execution_id: UUID
     conversation_id: UUID
     status: AgentRunStatus
+    llm_backend: LLMBackend
     attempt_count: int
     result: str | None
     error_code: str | None
@@ -59,6 +66,7 @@ def _run_response(run: AgentRun) -> RunResponse:
         execution_id=run.id,
         conversation_id=run.conversation_id,
         status=run.status,
+        llm_backend=LLMBackend(run.llm_backend),
         attempt_count=run.attempt_count,
         result=run.result_text,
         error_code=run.error_code,
@@ -115,11 +123,14 @@ def create_app() -> FastAPI:
                 content=request.message,
                 idempotency_key=request.idempotency_key,
                 total_timeout_seconds=get_settings().agent_run_timeout_seconds,
+                llm_backend=request.llm_backend,
             )
         except LookupError as exc:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, "Conversation not found"
             ) from exc
+        except IdempotencyBackendConflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
         try:
             execute_run.delay(str(run_id))
         except OperationalError:

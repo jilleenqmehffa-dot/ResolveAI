@@ -381,7 +381,8 @@ async def test_worker_finishes_once_when_task_is_redelivered(monkeypatch) -> Non
 
     actual_create_graph = create_agent_graph
 
-    def scripted_graph(client, *, checkpointer, context_loader):
+    def scripted_graph(client, *, checkpointer, context_loader, llm_backend):
+        assert llm_backend.value == "deepseek"
         return actual_create_graph(
             client,
             model=FinalModel(),

@@ -316,6 +316,9 @@ class AgentRun(Base):
         server_default="PENDING",
     )
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    llm_backend: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="deepseek", server_default="deepseek"
+    )
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

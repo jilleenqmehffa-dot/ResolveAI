@@ -42,6 +42,7 @@ async def submit_case(
     wait: bool,
     poll_interval: float,
     wait_timeout: float,
+    llm_backend: str = "deepseek",
 ) -> Result:
     result = Result(case.task_id, case.customer_id, repetition)
     headers = {"X-Agent-Token": token, "X-Customer-ID": case.customer_id}
@@ -57,6 +58,7 @@ async def submit_case(
                 "conversation_id": result.conversation_id,
                 "message": case.message,
                 "idempotency_key": f"bench:{batch_id}:{case.task_id}:{repetition}",
+                "llm_backend": llm_backend,
             },
         )
         response.raise_for_status()
@@ -113,6 +115,7 @@ async def run(
                     args.wait,
                     args.poll_interval,
                     args.wait_timeout,
+                    getattr(args, "llm_backend", "deepseek"),
                 )
 
         return await asyncio.gather(
@@ -132,6 +135,7 @@ def main() -> int:
         "--token", help="Agent internal token; defaults to AGENT_INTERNAL_TOKEN"
     )
     parser.add_argument("--split", choices=("train", "test", "base"), default="test")
+    parser.add_argument("--llm-backend", choices=("deepseek", "mock"), default="deepseek")
     parser.add_argument(
         "--limit", type=int, help="First N tasks from the split; default is all"
     )

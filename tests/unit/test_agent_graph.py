@@ -52,6 +52,15 @@ async def test_agent_final_answer_ends_without_tool_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mock_backend_finishes_without_commerce_calls(monkeypatch) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    async with CommerceClient("http://commerce.test", "u1") as client:
+        result = await create_agent_graph(client, llm_backend="mock").ainvoke(initial_state())
+    assert result["messages"][-1].content.startswith("Simulated LLM response")
+    assert result["tool_call_count"] == 0
+
+
+@pytest.mark.asyncio
 async def test_graph_prepares_context_runs_tool_then_returns_to_agent() -> None:
     requests: list[str] = []
 

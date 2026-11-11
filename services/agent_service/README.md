@@ -7,6 +7,12 @@
 `services.agent_service.app.agents.llm.create_deepseek_model()` 创建；创建时不会发起 API 请求，
 调用模型时才需要有效的 Key。图节点可对返回的模型调用 `bind_tools(...)`。
 
+`POST /chat` 可带 `llm_backend`：`deepseek`（默认）或 `mock`。选择值保存在
+`agent_runs.llm_backend`，Worker 重试时仍使用该值。`mock` 返回固定回复，不请求
+DeepSeek、不消耗模型 token，也不会调用 Commerce 工具；适合验证提交、队列、
+执行状态和测评链路，不用于衡量任务解决能力。使用 `mock` 无需
+`DEEPSEEK_API_KEY`，但完整测评的 trace 评分仍需 LangSmith 读取权限。
+
 ## Agent 图
 
 `create_agent_graph()` 按 `prepare_context → agent → tool_guard → tools/rejected → agent`

@@ -6,6 +6,7 @@ import pytest
 from langchain_deepseek import ChatDeepSeek
 
 from services.agent_service.app.agents.llm import factory
+from services.agent_service.app.agents.llm.mock import MockChatModel
 from services.agent_service.app.core import config
 
 
@@ -23,6 +24,21 @@ def test_factory_uses_environment_key_and_model(monkeypatch: pytest.MonkeyPatch)
     assert model.model_name == "deepseek-flash"
     assert model.api_key.get_secret_value() == "test-key"
     assert model.max_retries == 0
+
+
+@pytest.mark.asyncio
+async def test_mock_model_needs_no_key_and_reports_zero_tokens(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    model = factory.create_chat_model("mock")
+    assert isinstance(model, MockChatModel)
+    answer = await model.bind_tools([]).ainvoke("Hello")
+    assert answer.content == "Simulated LLM response. No Commerce action was performed."
+    assert answer.usage_metadata == {
+        "input_tokens": 0, "output_tokens": 0, "total_tokens": 0
+    }
 
 
 def test_factory_requires_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

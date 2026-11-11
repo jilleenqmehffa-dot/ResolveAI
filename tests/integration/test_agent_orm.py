@@ -90,6 +90,7 @@ def test_relationships_and_defaults(session):
     assert loaded.summary.last_message.id == message.id
     assert session.get(Message, message.id).covered_summaries[0].id == summary.id
     assert loaded.agent_runs[0].trigger_message.id == message.id
+    assert loaded.agent_runs[0].llm_backend == "deepseek"
     assert loaded.agent_runs[0].tool_executions[0].agent_run.id == run.id
     assert session.get(Message, message.id).sourced_memories[0].id == memory.id
     assert session.get(CustomerMemory, memory.id).expires_at == expiry

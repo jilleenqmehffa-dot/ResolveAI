@@ -5,7 +5,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from services.agent_service.app.agents.llm import create_deepseek_model
+from services.agent_service.app.agents.llm import LLMBackend, create_chat_model
 from services.agent_service.app.agents.node import (
     DEFAULT_SYSTEM_PROMPT,
     AgentNodes,
@@ -24,6 +24,7 @@ def create_agent_graph(
     client: CommerceClient,
     *,
     model: BaseChatModel | None = None,
+    llm_backend: LLMBackend | str = LLMBackend.DEEPSEEK,
     context_loader: ContextLoader | None = None,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     max_tool_calls: int = 8,
@@ -34,7 +35,7 @@ def create_agent_graph(
     if recursion_limit < 5:
         raise ValueError("recursion_limit must be at least 5")
     tools = create_commerce_tools(client)
-    chat_model = model if model is not None else create_deepseek_model()
+    chat_model = model if model is not None else create_chat_model(llm_backend)
     nodes = AgentNodes(
         chat_model.bind_tools(tools),
         tools,

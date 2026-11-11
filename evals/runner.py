@@ -80,6 +80,7 @@ async def run_task(
     task: dict[str, Any], database: dict[str, Any], config: dict[str, Any],
     client: httpx.AsyncClient, token: str, batch_id: str,
     rebuild_engine: Engine | None = None,
+    llm_backend: str = "deepseek",
 ) -> dict[str, Any]:
     row: dict[str, Any] = {"task_id": str(task["id"]), "customer_id": None,
                            "execution_id": None, "status": "ERROR", "scores": None,
@@ -99,6 +100,7 @@ async def run_task(
                 client, case, 1, batch_id, token, True,
                 float(config.get("poll_interval", 1)),
                 float(config.get("wait_timeout", 180)),
+                llm_backend,
             )
             row["execution_id"] = submitted.execution_id
             row["status"] = submitted.status
@@ -130,7 +132,7 @@ async def run_task(
     return row
 
 
-async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dict[str, Any], token: str, rebuild_engine: Engine | None = None) -> list[dict[str, Any]]:
+async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dict[str, Any], token: str, rebuild_engine: Engine | None = None, llm_backend: str = "deepseek") -> list[dict[str, Any]]:
     concurrency = int(config.get("concurrency", 1))
     if concurrency < 1:
         raise ValueError("concurrency must be positive")
@@ -147,7 +149,7 @@ async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dic
         async def bounded(task: dict[str, Any]) -> dict[str, Any]:
             nonlocal completed
             async with semaphore:
-                row = await run_task(task, database, config, client, token, batch_id, rebuild_engine)
+                row = await run_task(task, database, config, client, token, batch_id, rebuild_engine, llm_backend)
                 completed += 1
                 outcome = (
                     f"error: {row['error']['type']}"
@@ -167,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     selection.add_argument("--task-id", help="evaluate only this task ID, regardless of config split")
     selection.add_argument("--all", action="store_true", help="evaluate every task in the configured split")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--llm-backend", choices=("deepseek", "mock"), default="deepseek")
     parser.add_argument("--rebuild-each-task", action="store_true", help="restore pinned Commerce data before every task")
     parser.add_argument("--confirm-database", help="required with --rebuild-each-task; exact database name")
     args = parser.parse_args(argv)
@@ -208,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--rebuild-each-task requires concurrency=1")
         rebuild_engine = create_engine(database_url)
     try:
-        rows = asyncio.run(run(tasks, database, config, token, rebuild_engine))
+        rows = asyncio.run(run(tasks, database, config, token, rebuild_engine, args.llm_backend))
     finally:
         if rebuild_engine is not None:
             rebuild_engine.dispose()
@@ -219,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         split=None if args.task_id or args.tasks else config.get("split"),
         output=args.output, agent_version=os.getenv("AGENT_VERSION") or env_values.get("AGENT_VERSION"),
         rebuild_each_task=args.rebuild_each_task,
+        llm_backend=args.llm_backend,
     )
     scored = [row for row in rows if row["scores"] is not None]
     print(

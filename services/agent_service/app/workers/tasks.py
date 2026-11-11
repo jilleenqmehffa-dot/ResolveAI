@@ -161,7 +161,8 @@ async def _execute_graph(
             return await asyncio.to_thread(_conversation_history, sessions, claim)
 
         graph = create_agent_graph(
-            client, checkpointer=saver, context_loader=load_history
+            client, checkpointer=saver, context_loader=load_history,
+            llm_backend=claim.llm_backend,
         )
         snapshot = await graph.aget_state(config)
         if snapshot.values:

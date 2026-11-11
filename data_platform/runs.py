@@ -45,6 +45,7 @@ def record_run(
     rows: list[dict[str, Any]], *, task_path: Path, database_path: Path,
     split: str | None, output: Path, agent_version: str | None = None,
     rebuild_each_task: bool = False,
+    llm_backend: str = "deepseek",
 ) -> dict[str, Any]:
     """Store a new run summary without customer data or credentials."""
     entry = {
@@ -54,6 +55,7 @@ def record_run(
         "sources": {"tasks_sha256": sha256(task_path), "retail_sha256": sha256(database_path)},
         "split": split,
         "rebuild_each_task": rebuild_each_task,
+        "llm_backend": llm_backend,
         "task_ids": [str(row["task_id"]) for row in rows],
         "agent_version": agent_version,
         "code_revision": _revision(),
