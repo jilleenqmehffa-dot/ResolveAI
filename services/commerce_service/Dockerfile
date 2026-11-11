@@ -21,6 +21,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY services/__init__.py /app/services/__init__.py
 COPY services/commerce_service /app/services/commerce_service
 COPY evals /app/evals
+COPY data_platform /app/data_platform
 
 USER 10001:10001
 

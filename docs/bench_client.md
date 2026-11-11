@@ -18,6 +18,8 @@
 
 配置示例位于 `evals/runner.example.yaml`，明确指定 `tasks.json` 和
 `split_tasks.json` 的 `test` 划分，因此 `--all` 会测评测试集 40 题。
+测评运行会额外写入 `evals/runs/<run_id>.json` 摘要，记录数据文件哈希、评分器哈希和分数。
+需要每题使用相同业务初始状态时，按[数据中台说明](data_platform.md)配置独立测试库并使用 `--rebuild-each-task`。
 `--tasks` 可覆盖配置，直接测评指定 JSON 数组中的全部任务，此时不应用配置的划分。
 Bench 任务字段从
 `user_scenario.instructions` 映射为客户与消息；自定义任务也可直接提供

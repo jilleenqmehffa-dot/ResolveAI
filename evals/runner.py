@@ -13,8 +13,13 @@ from uuid import uuid4
 
 import httpx
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine, make_url
 
+from data_platform.core import source_path, validate_sources
+from data_platform.rebuild import rebuild_database
+from data_platform.runs import record_run
 from evals.adapter.commerce_adapter import CommerceAdapter
 from evals.adapter.trace_adapter import TraceAdapter
 from evals.clients.benchmark_client import BenchCase, _customer_id
@@ -74,11 +79,14 @@ def reasons(success: Any, trajectory: Any) -> list[str]:
 async def run_task(
     task: dict[str, Any], database: dict[str, Any], config: dict[str, Any],
     client: httpx.AsyncClient, token: str, batch_id: str,
+    rebuild_engine: Engine | None = None,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {"task_id": str(task["id"]), "customer_id": None,
                            "execution_id": None, "status": "ERROR", "scores": None,
                            "reasons": [], "error": None}
     try:
+        if rebuild_engine is not None:
+            await asyncio.to_thread(rebuild_database, rebuild_engine)
         case = map_task(task, database)
         if not case.customer_id.strip() or not case.message.strip():
             raise ValueError("customer_id and message must be nonempty")
@@ -122,10 +130,12 @@ async def run_task(
     return row
 
 
-async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dict[str, Any], token: str) -> list[dict[str, Any]]:
+async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dict[str, Any], token: str, rebuild_engine: Engine | None = None) -> list[dict[str, Any]]:
     concurrency = int(config.get("concurrency", 1))
     if concurrency < 1:
         raise ValueError("concurrency must be positive")
+    if rebuild_engine is not None and concurrency != 1:
+        raise ValueError("rebuilding before each task requires concurrency=1")
     semaphore = asyncio.Semaphore(concurrency)
     async with httpx.AsyncClient(
         base_url=config["agent_base_url"], timeout=float(config.get("request_timeout", 10)),
@@ -137,7 +147,7 @@ async def run(tasks: list[dict[str, Any]], database: dict[str, Any], config: dic
         async def bounded(task: dict[str, Any]) -> dict[str, Any]:
             nonlocal completed
             async with semaphore:
-                row = await run_task(task, database, config, client, token, batch_id)
+                row = await run_task(task, database, config, client, token, batch_id, rebuild_engine)
                 completed += 1
                 outcome = (
                     f"error: {row['error']['type']}"
@@ -157,17 +167,21 @@ def main(argv: list[str] | None = None) -> int:
     selection.add_argument("--task-id", help="evaluate only this task ID, regardless of config split")
     selection.add_argument("--all", action="store_true", help="evaluate every task in the configured split")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rebuild-each-task", action="store_true", help="restore pinned Commerce data before every task")
+    parser.add_argument("--confirm-database", help="required with --rebuild-each-task; exact database name")
     args = parser.parse_args(argv)
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
         parser.error("config must be a YAML mapping")
-    load_dotenv(config.get("env_file", ".env"))
+    env_values = dotenv_values(config.get("env_file", ".env"))
     source = args.tasks or config.get("tasks")
     if not source:
         parser.error("specify --tasks or tasks in config")
     task_path = Path(source)
     database_path = Path(config.get("database", "evals/datasets/db.json"))
-    token = os.getenv("AGENT_INTERNAL_TOKEN")
+    if task_path.resolve() == source_path("tasks").resolve() and database_path.resolve() == source_path("retail").resolve():
+        validate_sources()
+    token = os.getenv("AGENT_INTERNAL_TOKEN") or env_values.get("AGENT_INTERNAL_TOKEN")
     if not token:
         parser.error("AGENT_INTERNAL_TOKEN is required")
     for key in ("agent_base_url", "commerce_base_url"):
@@ -183,12 +197,32 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("split_file is required when split is configured")
         tasks = select_split(tasks, Path(config["split_file"]), str(config["split"]))
     database = json.loads(database_path.read_text(encoding="utf-8"))
-    rows = asyncio.run(run(tasks, database, config, token))
+    rebuild_engine = None
+    if args.rebuild_each_task:
+        if task_path.resolve() != source_path("tasks").resolve() or database_path.resolve() != source_path("retail").resolve():
+            parser.error("--rebuild-each-task requires the pinned tasks and retail dataset")
+        database_url = os.getenv("DATA_PLATFORM_TEST_DATABASE_URL")
+        if not database_url or not args.confirm_database or make_url(database_url).database != args.confirm_database:
+            parser.error("set DATA_PLATFORM_TEST_DATABASE_URL and confirm its exact database name")
+        if int(config.get("concurrency", 1)) != 1:
+            parser.error("--rebuild-each-task requires concurrency=1")
+        rebuild_engine = create_engine(database_url)
+    try:
+        rows = asyncio.run(run(tasks, database, config, token, rebuild_engine))
+    finally:
+        if rebuild_engine is not None:
+            rebuild_engine.dispose()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    entry = record_run(
+        rows, task_path=task_path, database_path=database_path,
+        split=None if args.task_id or args.tasks else config.get("split"),
+        output=args.output, agent_version=os.getenv("AGENT_VERSION") or env_values.get("AGENT_VERSION"),
+        rebuild_each_task=args.rebuild_each_task,
+    )
     scored = [row for row in rows if row["scores"] is not None]
     print(
-        f"Wrote {len(rows)} results to {args.output}; "
+        f"Wrote {len(rows)} results to {args.output} (run {entry['run_id']}); "
         f"scored: {len(scored)}; errors: {sum(bool(row['error']) for row in rows)}"
     )
     if scored:

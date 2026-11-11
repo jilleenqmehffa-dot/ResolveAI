@@ -43,6 +43,7 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "token")
+    monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
 
     async def handler(request):
         if request.url.path == "/conversations":
@@ -89,6 +90,11 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
     assert rows[0]["scores"] == {"task_success": 1.0, "trajectory": 1.0}
     assert rows[0]["error"] is None
     assert rows[1]["error"]["type"] == "KeyError"
+    run_files = list((tmp_path / "runs").glob("*.json"))
+    assert len(run_files) == 1
+    run_record = json.loads(run_files[0].read_text(encoding="utf-8"))
+    assert run_record["summary"]["total"] == 2
+    assert run_record["summary"]["scored"] == 1
 
     split_path = tmp_path / "split.json"
     split_path.write_text('{"test": ["broken"]}', encoding="utf-8")

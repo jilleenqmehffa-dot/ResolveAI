@@ -11,3 +11,5 @@
 **/*.py[cod]
 tests/
 docs/
+evals/runs/
+evals/ingestions/

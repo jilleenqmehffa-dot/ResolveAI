@@ -1,0 +1,24 @@
+{
+  "retail": {
+    "source": "evals/datasets/db.json",
+    "owner": "Commerce Service",
+    "description": "Products, customers, orders, and payments used by the retail benchmark",
+    "classification": "restricted",
+    "sensitive_fields": ["users.*.email", "users.*.address", "users.*.payment_methods"],
+    "consumers": ["Commerce seed", "benchmark evaluator"]
+  },
+  "tasks": {
+    "source": "evals/datasets/tasks.json",
+    "owner": "Evaluation",
+    "description": "Benchmark scenarios and expected actions",
+    "classification": "internal",
+    "consumers": ["benchmark runner"]
+  },
+  "splits": {
+    "source": "evals/datasets/split_tasks.json",
+    "owner": "Evaluation",
+    "description": "Train and test task membership",
+    "classification": "internal",
+    "consumers": ["benchmark runner"]
+  }
+}

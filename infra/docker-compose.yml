@@ -19,7 +19,21 @@ x-commerce-build: &commerce-build
   context: ..
   dockerfile: services/commerce_service/Dockerfile
 
+x-data-build: &data-build
+  context: ..
+  dockerfile: services/data_service/Dockerfile
+
 services:
+  data-api:
+    build: *data-build
+    environment:
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN in .env}
+    volumes:
+      - ../evals:/app/evals:ro
+    ports:
+      - "127.0.0.1:8002:8002"
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -152,9 +166,13 @@ services:
   commerce-seed:
     profiles: ["seed"]
     build: *commerce-build
-    command: ["python", "-m", "evals.runners.import_retail_json"]
+    command: ["python", "-m", "data_platform.cli", "ingest"]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
       DATABASE_URL: postgresql+psycopg://resolveai:${POSTGRES_PASSWORD:-resolveai}@postgres:5432/resolveai
+      DATA_PLATFORM_INGESTIONS_DIR: /app/evals/ingestions
+    volumes:
+      - ../evals/ingestions:/app/evals/ingestions
     depends_on:
       commerce-migrate:
         condition: service_completed_successfully

@@ -24,6 +24,7 @@ PostgreSQL 容器承载，但分别使用 `resolveai` 和 `resolveai_agent` 数�
 Agent 到 Commerce 的 HTTP 请求默认经过 Toxiproxy，未启用故障时正常透传。
 故障注入和监控的操作方法见 [基础设施说明](infra/README.md)。
 批量并发提交 Bench 场景的方法见 [Bench 并发客户端](docs/bench_client.md)。
+数据目录、质量检查、版本、测试库重建和测评摘要查询见 [最小数据中台](docs/data_platform.md)。
 
 ## 启动 API
 
