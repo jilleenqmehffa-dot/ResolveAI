@@ -8,9 +8,12 @@
 调用模型时才需要有效的 Key。图节点可对返回的模型调用 `bind_tools(...)`。
 
 `POST /chat` 可带 `llm_backend`：`deepseek`（默认）或 `mock`。选择值保存在
-`agent_runs.llm_backend`，Worker 重试时仍使用该值。`mock` 返回固定回复，不请求
-DeepSeek、不消耗模型 token，也不会调用 Commerce 工具；适合验证提交、队列、
-执行状态和测评链路，不用于衡量任务解决能力。使用 `mock` 无需
+`agent_runs.llm_backend`，Worker 重试时仍使用该值。`POST /chat` 也可带
+`mock_mode`：`fast`（默认）或 `latency`。该值保存在 `agent_runs.mock_mode`，
+Worker 会按每次运行的配置创建 MockLLM；`latency` 在每次模型调用前随机等待 3～6 秒。
+`mock` 固定调用一次只读
+`list_products` 工具后回复固定文字，不请求 DeepSeek、不消耗模型 token、
+不修改业务数据；适合验证提交、队列、网络故障和测评链路，不用于衡量任务解决能力。使用 `mock` 无需
 `DEEPSEEK_API_KEY`，但完整测评的 trace 评分仍需 LangSmith 读取权限。
 
 ## Agent 图

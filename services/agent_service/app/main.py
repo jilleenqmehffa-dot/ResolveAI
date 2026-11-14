@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.agent_service.app.agents.llm.types import LLMBackend
+from services.agent_service.app.agents.llm.types import LLMBackend, MockMode
 from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.db.session import get_agent_session_factory
 from services.agent_service.app.execution.lifecycle import (
@@ -34,6 +34,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     idempotency_key: str = Field(min_length=1, max_length=255)
     llm_backend: LLMBackend = LLMBackend.DEEPSEEK
+    mock_mode: MockMode = MockMode.FAST
 
 
 class RunResponse(BaseModel):
@@ -41,6 +42,7 @@ class RunResponse(BaseModel):
     conversation_id: UUID
     status: AgentRunStatus
     llm_backend: LLMBackend
+    mock_mode: MockMode
     attempt_count: int
     result: str | None
     error_code: str | None
@@ -67,6 +69,7 @@ def _run_response(run: AgentRun) -> RunResponse:
         conversation_id=run.conversation_id,
         status=run.status,
         llm_backend=LLMBackend(run.llm_backend),
+        mock_mode=MockMode(run.mock_mode),
         attempt_count=run.attempt_count,
         result=run.result_text,
         error_code=run.error_code,
@@ -124,6 +127,7 @@ def create_app() -> FastAPI:
                 idempotency_key=request.idempotency_key,
                 total_timeout_seconds=get_settings().agent_run_timeout_seconds,
                 llm_backend=request.llm_backend,
+                mock_mode=request.mock_mode,
             )
         except LookupError as exc:
             raise HTTPException(

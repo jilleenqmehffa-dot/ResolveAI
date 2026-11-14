@@ -1,8 +1,10 @@
 """DeepSeek configuration is explicit and model creation does not call the API."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from langchain_core.messages import ToolMessage
 from langchain_deepseek import ChatDeepSeek
 
 from services.agent_service.app.agents.llm import factory
@@ -34,11 +36,30 @@ async def test_mock_model_needs_no_key_and_reports_zero_tokens(
     monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
     model = factory.create_chat_model("mock")
     assert isinstance(model, MockChatModel)
-    answer = await model.bind_tools([]).ainvoke("Hello")
+    request = await model.bind_tools([]).ainvoke("Hello")
+    assert request.tool_calls[0]["name"] == "list_products"
+    answer = await model.ainvoke([ToolMessage(content="{}", tool_call_id="mock-list-products")])
     assert answer.content == "Simulated LLM response. No Commerce action was performed."
     assert answer.usage_metadata == {
         "input_tokens": 0, "output_tokens": 0, "total_tokens": 0
     }
+
+
+@pytest.mark.asyncio
+async def test_mock_latency_waits_once_per_model_call_without_real_sleep(monkeypatch) -> None:
+    waits = []
+
+    async def fake_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr("services.agent_service.app.agents.llm.mock.random.uniform", lambda low, high: 4.5)
+    model = factory.create_chat_model("mock", mock_mode="latency")
+    first = await model.ainvoke("Hello")
+    second = await model.ainvoke([ToolMessage(content="[]", tool_call_id="mock-list-products")])
+    assert first.tool_calls[0]["name"] == "list_products"
+    assert second.content.startswith("Simulated LLM response")
+    assert waits == [4.5, 4.5]
 
 
 def test_factory_requires_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

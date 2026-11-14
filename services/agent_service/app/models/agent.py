@@ -319,6 +319,9 @@ class AgentRun(Base):
     llm_backend: Mapped[str] = mapped_column(
         String(16), nullable=False, default="deepseek", server_default="deepseek"
     )
+    mock_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="fast", server_default="fast"
+    )
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

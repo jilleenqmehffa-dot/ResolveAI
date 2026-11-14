@@ -163,6 +163,7 @@ async def _execute_graph(
         graph = create_agent_graph(
             client, checkpointer=saver, context_loader=load_history,
             llm_backend=claim.llm_backend,
+            mock_mode=claim.mock_mode,
         )
         snapshot = await graph.aget_state(config)
         if snapshot.values:

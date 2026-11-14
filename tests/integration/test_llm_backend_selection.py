@@ -26,10 +26,12 @@ def test_per_run_backend_is_persisted_and_validated(tmp_path, monkeypatch) -> No
         "message": "Hello",
         "idempotency_key": str(uuid4()),
         "llm_backend": "mock",
+        "mock_mode": "latency",
     }
     response = client.post("/chat", headers=headers, json=payload)
     assert response.status_code == 202
     assert response.json()["llm_backend"] == "mock"
+    assert response.json()["mock_mode"] == "latency"
     assert client.get(f"/executions/{response.json()['execution_id']}", headers=headers).json()["llm_backend"] == "mock"
     # SQLite drops timezone information; let claim_run create an aware deadline.
     with sessions() as session, session.begin():
@@ -39,7 +41,11 @@ def test_per_run_backend_is_persisted_and_validated(tmp_path, monkeypatch) -> No
         lease_seconds=60, total_timeout_seconds=120, max_attempts=3,
     )
     assert claim is not None and claim.llm_backend.value == "mock"
+    assert claim.mock_mode.value == "latency"
     assert client.post("/chat", headers=headers, json=payload).status_code == 202
+    assert client.post(
+        "/chat", headers=headers, json={**payload, "mock_mode": "fast"}
+    ).status_code == 409
     assert client.post(
         "/chat", headers=headers, json={**payload, "llm_backend": "deepseek"}
     ).status_code == 409
@@ -52,4 +58,5 @@ def test_per_run_backend_is_persisted_and_validated(tmp_path, monkeypatch) -> No
     )
     assert default_response.status_code == 202
     assert default_response.json()["llm_backend"] == "deepseek"
+    assert default_response.json()["mock_mode"] == "fast"
     engine.dispose()
