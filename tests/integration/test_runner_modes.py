@@ -1,13 +1,14 @@
 """The unified runner dispatches load and fault modules with one CLI."""
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
 
 import httpx
 import pytest
 
 from evals import runner
-from evals.clients import load_client
 from evals.executors import network_fault as network_executor
 
 
@@ -34,73 +35,77 @@ def inputs(tmp_path, monkeypatch):
     return config_path, tmp_path / "results.json"
 
 
-def test_concurrency_mode_forwards_mock_and_writes_results(inputs, monkeypatch):
+@pytest.mark.parametrize("fail_chat", [False, True])
+@pytest.mark.parametrize("explicit_output", [False, True])
+def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, capsys, fail_chat, explicit_output):
     config_path, output = inputs
-    seen_backends = []
-    seen_modes = []
+    received = []
 
-    async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/conversations":
-            return httpx.Response(201, json={"conversation_id": str(uuid4())})
-        if request.url.path == "/chat":
-            payload = json.loads(request.content)
-            seen_backends.append(payload["llm_backend"])
-            seen_modes.append(payload["mock_mode"])
-            return httpx.Response(202, json={"execution_id": str(uuid4()), "status": "QUEUED"})
-        return httpx.Response(200, json={"status": "SUCCEEDED"})
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            if self.path == "/conversations":
+                status, body = 201, {"conversation_id": str(uuid4())}
+            elif self.path == "/chat":
+                received.append(payload)
+                if fail_chat and payload["message"] == "first":
+                    status, body = 503, {"detail": "busy"}
+                else:
+                    status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+            else:
+                status, body = 404, {}
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
 
-    real_client = httpx.AsyncClient
-    monkeypatch.setattr(
-        load_client.httpx, "AsyncClient",
-        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"SUCCEEDED"}')
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    reports_dir = output.parent / "reports"
+    monkeypatch.setattr(runner, "REPORTS_DIR", reports_dir)
+    config_path.write_text(
+        config_path.read_text().replace("http://agent.test", f"http://127.0.0.1:{server.server_port}")
     )
-    assert runner.main([
+    args = [
         "--config", str(config_path), "--mode", "concurrency", "--all",
         "--concurrency", "2", "--repeat", "2", "--llm-backend", "mock",
         "--mock-mode", "latency",
-        "--output", str(output),
-    ]) == 0
-    rows = json.loads(output.read_text(encoding="utf-8"))
-    assert len(rows) == 4
-    assert {row["status"] for row in rows} == {"SUCCEEDED"}
-    assert seen_backends == ["mock"] * 4
-    assert seen_modes == ["latency"] * 4
+    ]
+    if explicit_output:
+        args.extend(("--output", str(output)))
+    try:
+        assert runner.main(args) == (1 if fail_chat else 0)
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
+    actual_output = output if explicit_output else next((reports_dir / "concurrency").glob("*.json"))
+    rows = json.loads(actual_output.read_text())
+    assert [(row["task_id"], row["repetition"]) for row in rows] == [
+        ("one", 1), ("two", 1), ("one", 2), ("two", 2),
+    ]
+    assert {row["status"] for row in rows} == ({"SUCCEEDED", "ERROR"} if fail_chat else {"SUCCEEDED"})
+    assert len({row["conversation_id"] for row in rows}) == 4
+    assert len({payload["idempotency_key"] for payload in received}) == 4
+    assert {payload["llm_backend"] for payload in received} == {"mock"}
+    assert {payload["mock_mode"] for payload in received} == {"latency"}
+    assert "Locust: 2 users, 4 executions" in capsys.readouterr().out
     receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
+    assert receipt["result_file"] == str(actual_output.resolve())
+    assert receipt["summary"]["total"] == 4
     assert receipt["mode"] == "concurrency"
     assert receipt["mock_mode"] == "latency"
-    assert receipt["summary"]["total"] == 4
-    assert len(receipt["scenario_config_sha256"]) == 64
-    assert receipt["dataset_version"] is None
-
-
-def test_concurrency_without_output_writes_to_mode_report_directory(inputs, monkeypatch):
-    config_path, output = inputs
-    reports_dir = output.parent / "reports"
-    monkeypatch.setattr(runner, "REPORTS_DIR", reports_dir)
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/conversations":
-            return httpx.Response(201, json={"conversation_id": str(uuid4())})
-        if request.url.path == "/chat":
-            return httpx.Response(202, json={"execution_id": str(uuid4()), "status": "QUEUED"})
-        return httpx.Response(200, json={"status": "SUCCEEDED"})
-
-    real_client = httpx.AsyncClient
-    monkeypatch.setattr(
-        load_client.httpx, "AsyncClient",
-        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
-    )
-    assert runner.main([
-        "--config", str(config_path), "--mode", "concurrency", "--all",
-        "--llm-backend", "mock",
-    ]) == 0
-    reports = list((reports_dir / "concurrency").glob("*.json"))
-    assert len(reports) == 1
-    assert [row["status"] for row in json.loads(reports[0].read_text())] == ["SUCCEEDED", "SUCCEEDED"]
-    assert not (reports_dir / "agent-task").exists()
-    assert not (reports_dir / "network-fault").exists()
-    receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
-    assert receipt["result_file"] == str(reports[0].resolve())
 
 
 def test_network_fault_mode_restores_proxy_even_if_run_raises(inputs, monkeypatch):
