@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 PROXY = "agent_commerce_http"
+FAULTS = ("latency", "timeout", "disconnect", "down")
 
 
 def call(api: str, path: str, payload: dict | None = None) -> dict:
@@ -23,9 +24,38 @@ def call(api: str, path: str, payload: dict | None = None) -> dict:
     return json.loads(content) if content else {}
 
 
+def reset_fault(api: str) -> dict:
+    """Remove toxics and ensure a previously disabled proxy is enabled."""
+    call(api, "/reset", {})
+    return call(api, f"/proxies/{PROXY}", {"enabled": True})
+
+
+def set_fault(api: str, scenario: str, ms: int = 1000) -> dict:
+    """Apply one scenario from a clean, enabled proxy state."""
+    if scenario not in FAULTS:
+        raise ValueError(f"unknown fault scenario: {scenario}")
+    if ms < 0:
+        raise ValueError("fault duration must be nonnegative")
+    reset_fault(api)
+    if scenario == "down":
+        return call(api, f"/proxies/{PROXY}", {"enabled": False})
+    kind = "reset_peer" if scenario == "disconnect" else scenario
+    attribute = "latency" if kind == "latency" else "timeout"
+    return call(
+        api,
+        f"/proxies/{PROXY}/toxics",
+        {
+            "name": f"{kind}_downstream",
+            "type": kind,
+            "stream": "downstream",
+            "attributes": {attribute: 0 if kind == "reset_peer" else ms},
+        },
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("scenario", choices=("status", "reset", "latency", "timeout", "disconnect", "down"))
+    parser.add_argument("scenario", choices=("status", "reset", *FAULTS))
     parser.add_argument("--ms", type=int, default=1000, help="latency or timeout duration in milliseconds")
     parser.add_argument("--api", default="http://127.0.0.1:8474")
     args = parser.parse_args()
@@ -35,25 +65,10 @@ def main() -> None:
     try:
         if args.scenario == "status":
             result = call(args.api, f"/proxies/{PROXY}")
+        elif args.scenario == "reset":
+            result = reset_fault(args.api)
         else:
-            call(args.api, "/reset", {})
-            if args.scenario == "down":
-                result = call(args.api, f"/proxies/{PROXY}", {"enabled": False})
-            elif args.scenario == "reset":
-                result = call(args.api, f"/proxies/{PROXY}")
-            else:
-                kind = "reset_peer" if args.scenario == "disconnect" else args.scenario
-                attribute = "latency" if kind == "latency" else "timeout"
-                result = call(
-                    args.api,
-                    f"/proxies/{PROXY}/toxics",
-                    {
-                        "name": f"{kind}_downstream",
-                        "type": kind,
-                        "stream": "downstream",
-                        "attributes": {attribute: 0 if kind == "reset_peer" else args.ms},
-                    },
-                )
+            result = set_fault(args.api, args.scenario, args.ms)
     except (HTTPError, URLError, TimeoutError) as exc:
         parser.exit(1, f"Toxiproxy request failed: {exc}\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))

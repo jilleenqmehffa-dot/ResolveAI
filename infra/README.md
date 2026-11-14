@@ -20,6 +20,9 @@ Flower 默认账号为 `admin` / `resolveai`，Grafana 也是；可通过 `.env`
 
 ## 网络故障
 
+执行带网络故障的 Agent 任务使用[统一测评入口](../docs/bench_client.md)；
+以下命令用于单独检查或手动控制 Toxiproxy。
+
 Agent 工具调用使用 `COMMERCE_BASE_URL=http://toxiproxy:18080`，代理唯一上游是
 `commerce:8000`。PostgreSQL、RabbitMQ 和 Commerce 对客户端的访问不会经过代理。
 未注入故障时代理直接转发。管理 API 只在宿主机的 `127.0.0.1:8474` 开放。
