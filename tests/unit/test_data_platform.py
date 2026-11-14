@@ -19,7 +19,7 @@ from services.commerce_service.app.models import Base
 
 def test_pinned_sources_and_bad_references() -> None:
     assert validate_sources()["counts"]["test_tasks"] == 40
-    root = Path(__file__).resolve().parents[2] / "evals/datasets"
+    root = Path(__file__).resolve().parents[2] / "evals/scenarios/agent_task/datasets"
     database = json.loads((root / "db.json").read_text())
     tasks = json.loads((root / "tasks.json").read_text())
     splits = json.loads((root / "split_tasks.json").read_text())
@@ -32,7 +32,7 @@ def test_pinned_sources_and_bad_references() -> None:
 def test_rebuild_restores_seed_and_clears_new_rows(tmp_path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'commerce.sqlite'}")
     Base.metadata.create_all(engine)
-    source = Path(__file__).resolve().parents[2] / "evals/datasets/db.json"
+    source = Path(__file__).resolve().parents[2] / "evals/scenarios/agent_task/datasets/db.json"
     import_json(engine, source)
     products = Base.metadata.tables["products"]
     with engine.begin() as connection:
@@ -72,7 +72,7 @@ def test_ingest_records_versioned_receipt(tmp_path, monkeypatch) -> None:
 def test_run_registry_and_api_are_read_only_and_authenticated(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "test-token")
-    source = Path(__file__).resolve().parents[2] / "evals/datasets"
+    source = Path(__file__).resolve().parents[2] / "evals/scenarios/agent_task/datasets"
     rows = [{"task_id": "12", "status": "SUCCEEDED", "scores": {"task_success": 1, "trajectory": 0.5}, "error": None}]
     first = record_run(rows, task_path=source / "tasks.json", database_path=source / "db.json", split="test", output=tmp_path / "out.json")
     second = record_run(rows, task_path=source / "tasks.json", database_path=source / "db.json", split="test", output=tmp_path / "out2.json")

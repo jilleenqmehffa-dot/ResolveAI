@@ -14,7 +14,7 @@ from sqlalchemy.engine import Engine
 from services.commerce_service.app.db.session import get_engine
 from services.commerce_service.app.models import Base
 
-DEFAULT_SOURCE = Path(__file__).resolve().parents[1] / "datasets/db.json"
+DEFAULT_SOURCE = Path(__file__).resolve().parents[1] / "scenarios/agent_task/datasets/db.json"
 ADDRESS_FIELDS = ("address1", "address2", "city", "state", "country", "zip")
 
 

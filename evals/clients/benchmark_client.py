@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-DATASETS = Path(__file__).resolve().parents[1] / "datasets"
+DATASETS = Path(__file__).resolve().parents[1] / "scenarios/agent_task/datasets"
 EMAIL = re.compile(r"[\w.+-]+@[\w.-]*[\w-]", re.IGNORECASE)
 ORDER = re.compile(r"#W\d+", re.IGNORECASE)
 ZIP = re.compile(r"(?<!\d)\d{5}(?!\d)")

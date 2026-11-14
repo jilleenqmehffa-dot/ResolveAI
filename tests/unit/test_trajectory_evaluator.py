@@ -222,7 +222,7 @@ def test_not_found_cannot_be_expected_for_write_actions() -> None:
 
 
 def test_marked_benchmark_lookups_reference_missing_resources() -> None:
-    datasets = Path(__file__).resolve().parents[2] / "evals/datasets"
+    datasets = Path(__file__).resolve().parents[2] / "evals/scenarios/agent_task/datasets"
     database = json.loads((datasets / "db.json").read_text(encoding="utf-8"))
     tasks = json.loads((datasets / "tasks.json").read_text(encoding="utf-8"))
     marked = [

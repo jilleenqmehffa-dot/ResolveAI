@@ -13,7 +13,7 @@ from evals.runners.import_retail_json import import_json
 from services.commerce_service.app.core.config import get_settings
 from services.commerce_service.app.models import Base
 
-DATASET = Path(__file__).resolve().parents[2] / "evals/datasets/db.json"
+DATASET = Path(__file__).resolve().parents[2] / "evals/scenarios/agent_task/datasets/db.json"
 ADDRESS_FIELDS = ("address1", "address2", "city", "state", "country", "zip")
 
 
