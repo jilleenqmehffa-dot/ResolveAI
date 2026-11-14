@@ -42,14 +42,14 @@ Compose 的 `commerce-seed` 将收据写到同一目录；非 1000 用户的宿�
 
 ```bash
 export DATA_PLATFORM_TEST_DATABASE_URL='postgresql+psycopg://USER:PASSWORD@HOST:5432/resolveai_eval'
-.venv/bin/python -m evals.runner --config evals/runner.example.yaml --all --output /tmp/resolveai-results.json --rebuild-each-task --confirm-database resolveai_eval
+.venv/bin/python -m evals.runner --mode agent-task --all --output /tmp/resolveai-results.json --rebuild-each-task --confirm-database resolveai_eval
 ```
 
 Agent 和 Commerce 必须连接同一个测试数据库。否则重建的数据不会被测评请求使用。每题使用独立 Agent 会话；同一业务库的并行测评不支持自动重建。
 
 ## 测评运行记录与查询
 
-每次 `evals.runner` 运行后，`evals/runs/<run_id>.json` 保存不含客户详情的摘要：任务 ID、数据文件哈希、数据集版本、Git 修订号、评分器哈希、Agent 版本、执行状态数量和均分。设置 `AGENT_VERSION` 可以记录部署的 Agent 版本；未设置时该字段为空。原始逐题结果仍由 `--output` 写入指定文件。`evals/runs/` 默认不提交 Git；正式部署应将其放在有备份的持久存储上，并设置 `DATA_PLATFORM_RUNS_DIR` 指向该目录。
+每次 `evals.runner` 运行后，`evals/runs/<run_id>.json` 保存不含客户详情的摘要：任务 ID、数据文件哈希、数据集版本、场景配置文件哈希、Git 修订号、评分器哈希、Agent 版本、测评模式、模型、并发数、故障场景、执行状态数量和均分。设置 `AGENT_VERSION` 可以记录部署的 Agent 版本；未设置时该字段为空。原始逐题结果默认按模式写入 `evals/reports/<mode>/`，也可由 `--output` 指定文件。`evals/runs/` 和报告 JSON 默认不提交 Git；正式部署应将其放在有备份的持久存储上，并设置 `DATA_PLATFORM_RUNS_DIR` 指向摘要目录。
 
 在本机启动只读服务：
 

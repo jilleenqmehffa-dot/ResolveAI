@@ -17,7 +17,7 @@
 | Toxiproxy | 在 Agent 工具调用与 Commerce HTTP 服务之间注入延迟、断连、丢包和超时 | Compose 已配置 Agent→Commerce 代理，并提供延迟、超时、断连和恢复命令；端到端故障验收仍需运行 |
 | Commerce Service（目标 :8001） | 商品、客户、订单及退换货 HTTP API，承接业务写操作 | 已有 FastAPI、零售 ORM、Repository、Service 和路由；端口由启动命令决定，当前 README 默认 8000 |
 | PostgreSQL | 目标上分离 Agent 执行数据与商品业务数据 | 本地 Compose 配置在同一实例中创建 `resolveai` 与 `resolveai_agent` 两个数据库，并分别运行迁移 |
-| Benchmark 数据与 runner | 提供商品测试数据、任务定义和导入入口 | 已有 `db.json`、`tasks.json`、`split_tasks.json`、JSON 导入 runner 与并发提交客户端；动作正确率评估器尚未实现 |
+| Benchmark 数据与 runner | 提供商品测试数据、任务定义和导入入口 | 已有固定题库和数据版本；统一 runner 根据场景调用三个 executor，Agent 任务可对业务结果和动作轨迹评分 |
 | 可选观测工具 | Locust、Flower、Prometheus/Grafana、pgAdmin 与 Toxiproxy Dashboard | 已有 Flower、Prometheus、Grafana 和 Blackbox Exporter 的可选 Compose 配置；Locust、pgAdmin 与 Toxiproxy Dashboard 尚未接入 |
 
 ## 2. 目标请求链路
@@ -54,6 +54,6 @@ flowchart LR
 
 ## 4. 目录规划与当前差距
 
-图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。`evals/clients/`、`evals/datasets/`、`evals/runners/`、`evals/evaluators/` 对应测试输入、运行和评估。`infra/` 对应容器、故障注入和监控配置。
+图片中的目标目录以 `services/agent_service/app/` 为核心，包含 `api/`、`agents/`、`execution/`、`transport/`、`messaging/`、`workers/`、`maintenance/`、`models/`、`repositories/`、`schemas/`、`db/`、`core/`。测评侧由 `evals/scenarios/` 定义场景，`evals/runner.py` 负责调度，`evals/executors/` 采集原始结果，`evals/evaluators/` 评分；`evals/clients/` 提供内部请求客户端，`evals/runners/` 保留数据导入脚本。`infra/` 对应容器、故障注入和监控配置。
 
 当前仓库已实现 Commerce、部分 Benchmark 目录，以及 Agent 的内部 API、数据模型、只读工具、一个售后状态写工具、Celery Worker、租约和检查点。`infra/` 中有 Toxiproxy 故障注入配置与基础监控配置；更完整的业务写工具、外部身份认证、执行事件接口、业务指标和端到端故障验收仍是后续目标。实施顺序、接口契约、可靠性规则与验收标准见 [V2 开发规格](./spec_v2.md)。
