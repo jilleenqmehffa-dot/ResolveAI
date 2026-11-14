@@ -178,6 +178,33 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  locust:
+    profiles: ["load"]
+    image: locustio/locust:2.47.0
+    working_dir: /app
+    command: ["-f", "/app/evals/locustfile.py", "--host", "http://agent-api:8000", "--web-host", "0.0.0.0", "--web-port", "8089"]
+    environment:
+      PYTHONPATH: /app
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN in .env}
+      LOCUST_SPLIT: ${LOCUST_SPLIT:-test}
+      LOCUST_LLM_BACKEND: ${LOCUST_LLM_BACKEND:-mock}
+      LOCUST_MOCK_MODE: ${LOCUST_MOCK_MODE:-fast}
+      LOCUST_REQUEST_TIMEOUT: ${LOCUST_REQUEST_TIMEOUT:-10}
+      LOCUST_POLL_INTERVAL: ${LOCUST_POLL_INTERVAL:-1}
+      LOCUST_WAIT_TIMEOUT: ${LOCUST_WAIT_TIMEOUT:-180}
+    volumes:
+      - ../evals/locustfile.py:/app/evals/locustfile.py:ro
+      - ../evals/clients:/app/evals/clients:ro
+      - ../evals/scenarios/agent_task/datasets:/app/evals/scenarios/agent_task/datasets:ro
+    ports:
+      - "127.0.0.1:${LOCUST_PORT:-8089}:8089"
+    depends_on:
+      agent-api:
+        condition: service_started
+      agent-worker:
+        condition: service_started
+    restart: unless-stopped
+
   flower:
     profiles: ["monitoring"]
     image: mher/flower:2.2.0

@@ -18,6 +18,33 @@ Flower 默认账号为 `admin` / `resolveai`，Grafana 也是；可通过 `.env`
 数据库和 RabbitMQ 的密码分别由 `POSTGRES_PASSWORD`、`RABBITMQ_PASSWORD` 设置。
 这些本地默认密码仅适合可信开发机；自定义密码应使用 URL 安全字符。
 
+## Locust 可视化压测
+
+先按上文启动业务服务并导入零售样例数据，再从仓库根目录启动可选的 Locust 服务：
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml --profile load up -d locust
+```
+
+打开 `http://127.0.0.1:8089`，在界面中设置虚拟用户数、每秒启动用户数和运行时长，
+然后开始测试。容器通过 Compose 网络访问 `agent-api:8000`，Web UI 只绑定宿主机
+回环地址。若 8089 已被占用，在 `.env` 中设置 `LOCUST_PORT`。
+
+容器默认从 `test` 划分随机选题，使用 `mock` 模型和 `fast` 模式；每次迭代创建
+独立会话、提交任务并等待执行终态。界面显示创建会话、提交、轮询和完整执行流程
+的请求量、失败率与耗时。可在 `.env` 中设置 `LOCUST_SPLIT`、
+`LOCUST_LLM_BACKEND`、`LOCUST_MOCK_MODE`、`LOCUST_REQUEST_TIMEOUT`、
+`LOCUST_POLL_INTERVAL`、`LOCUST_WAIT_TIMEOUT`；修改后重新创建容器。
+使用真实模型时需要为 Agent Worker 配置有效的 `DEEPSEEK_API_KEY`。
+结束后运行：
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml --profile load stop locust
+```
+
+命令行的 `evals.runner --mode concurrency` 仍用于固定任务量的测评，结果写入
+`evals/reports/concurrency/`；Docker 中的 Locust Web UI 用于交互式持续压测。
+
 ## 网络故障
 
 执行带网络故障的 Agent 任务使用[统一测评入口](../docs/bench_client.md)；

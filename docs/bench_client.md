@@ -94,8 +94,13 @@ execution，Celery Worker 从数据库读取并创建对应配置的 MockLLM。�
 Agent API 和 Worker 容器并执行 Agent 数据库迁移。
 命令行参数可临时覆盖其他场景参数。
 去掉 `--limit` 可运行测试集 40 题。`--repeat 2` 会让每题重复两次。
-`executors/concurrency.py` 按场景参数并行调用 Agent API，等待终态，
-收集每次提交的状态和耗时；此模式不计算任务正确率。
+`executors/concurrency.py` 使用 Locust 虚拟用户按 `--concurrency` 控制同时执行的
+任务数；每次任务创建独立会话、提交 `/chat` 并等待终态。它按题目与重复次数的
+输入顺序返回状态和耗时，runner 的结果 JSON 格式不变。终端另外显示 HTTP
+吞吐率和完整执行流程的 P95 耗时。Locust 在独立进程中运行，任务完成后自动退出，
+避免 gevent 补丁影响其他测评模式。此模式不计算任务正确率。
+需要在浏览器实时查看或持续施压时，按[基础设施说明](../infra/README.md#locust-可视化压测)
+启动 Docker 中的 Locust Web UI。
 共享业务库中的写操作可能影响其他题；正确率评估应使用 `agent-task` 串行模式和
 可重建测试库。
 
