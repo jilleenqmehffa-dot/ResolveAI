@@ -11,13 +11,14 @@ import pytest
 from evals import runner
 from evals.adapter.commerce_adapter import CommerceSnapshot
 from evals.adapter.trace_adapter import AgentTrace
+from evals.executors import agent_task as agent_executor
 
 
 def test_example_config_selects_test_split_in_split_order():
     root = Path(__file__).resolve().parents[2]
-    tasks = runner.load_tasks(root / "evals/datasets/tasks.json")
+    tasks = runner.load_tasks(root / "evals/scenarios/agent_task/datasets/tasks.json")
     selected = runner.select_split(
-        tasks, root / "evals/datasets/split_tasks.json", "test"
+        tasks, root / "evals/scenarios/agent_task/datasets/split_tasks.json", "test"
     )
     assert len(selected) == 40
     assert str(selected[0]["id"]) == "5"
@@ -43,6 +44,7 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "token")
+    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
     seen_backends = []
 
@@ -56,7 +58,7 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
 
     real_client = httpx.AsyncClient
     monkeypatch.setattr(
-        runner.httpx, "AsyncClient",
+        agent_executor.httpx, "AsyncClient",
         lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
     )
 
@@ -83,8 +85,8 @@ def test_runner_cli_keeps_input_order_and_task_errors(tmp_path, monkeypatch):
         def wait_for_traces(self, execution_id, **kwargs):
             return [AgentTrace(execution_id, "trace", "root", ())]
 
-    monkeypatch.setattr(runner, "CommerceAdapter", Commerce)
-    monkeypatch.setattr(runner, "TraceAdapter", Traces)
+    monkeypatch.setattr(agent_executor, "CommerceAdapter", Commerce)
+    monkeypatch.setattr(agent_executor, "TraceAdapter", Traces)
     output = tmp_path / "results.json"
     assert runner.main(["--config", str(config_path), "--all", "--output", str(output)]) == 1
     rows = json.loads(output.read_text(encoding="utf-8"))

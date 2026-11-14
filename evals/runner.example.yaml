@@ -1,10 +1,11 @@
-tasks: evals/datasets/tasks.json
-split_file: evals/datasets/split_tasks.json
+tasks: evals/scenarios/agent_task/datasets/tasks.json
+split_file: evals/scenarios/agent_task/datasets/split_tasks.json
 split: test
-database: evals/datasets/db.json
+database: evals/scenarios/agent_task/datasets/db.json
 env_file: .env
 agent_base_url: http://127.0.0.1:8000
 commerce_base_url: http://127.0.0.1:8001
+toxiproxy_api: http://127.0.0.1:8474
 langsmith_project: resolveai
 concurrency: 1
 request_timeout: 10

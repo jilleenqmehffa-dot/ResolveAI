@@ -1,0 +1,13 @@
+tasks: evals/scenarios/agent_task/datasets/tasks.json
+split_file: evals/scenarios/agent_task/datasets/split_tasks.json
+split: test
+database: evals/scenarios/agent_task/datasets/db.json
+env_file: .env
+agent_base_url: http://127.0.0.1:8000
+llm_backend: mock
+mock_mode: fast
+concurrency: 10
+repeat: 1
+request_timeout: 10
+poll_interval: 1
+wait_timeout: 180

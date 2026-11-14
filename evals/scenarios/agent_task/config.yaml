@@ -1,0 +1,17 @@
+tasks: evals/scenarios/agent_task/datasets/tasks.json
+split_file: evals/scenarios/agent_task/datasets/split_tasks.json
+split: test
+database: evals/scenarios/agent_task/datasets/db.json
+env_file: .env
+agent_base_url: http://127.0.0.1:8000
+commerce_base_url: http://127.0.0.1:8001
+langsmith_project: resolveai
+llm_backend: deepseek
+concurrency: 1
+repeat: 1
+request_timeout: 10
+poll_interval: 1
+wait_timeout: 180
+trace_timeout: 30
+rebuild_each_task: false
+test_database_env: DATA_PLATFORM_TEST_DATABASE_URL

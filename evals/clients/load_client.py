@@ -4,18 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-import os
 import time
-from collections import Counter
-from dataclasses import asdict, dataclass
-from pathlib import Path
+from dataclasses import dataclass
 from uuid import uuid4
 
 import httpx
-from dotenv import load_dotenv
 
-from evals.clients.benchmark_client import BenchCase, load_cases
+from evals.clients.benchmark_client import BenchCase
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"}
 
@@ -43,6 +38,7 @@ async def submit_case(
     poll_interval: float,
     wait_timeout: float,
     llm_backend: str = "deepseek",
+    mock_mode: str = "fast",
 ) -> Result:
     result = Result(case.task_id, case.customer_id, repetition)
     headers = {"X-Agent-Token": token, "X-Customer-ID": case.customer_id}
@@ -59,6 +55,7 @@ async def submit_case(
                 "message": case.message,
                 "idempotency_key": f"bench:{batch_id}:{case.task_id}:{repetition}",
                 "llm_backend": llm_backend,
+                "mock_mode": mock_mode,
             },
         )
         response.raise_for_status()
@@ -116,6 +113,7 @@ async def run(
                     args.poll_interval,
                     args.wait_timeout,
                     getattr(args, "llm_backend", "deepseek"),
+                    getattr(args, "mock_mode", "fast"),
                 )
 
         return await asyncio.gather(
@@ -127,80 +125,5 @@ async def run(
         )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--env-file", type=Path, default=Path(".env"))
-    parser.add_argument(
-        "--token", help="Agent internal token; defaults to AGENT_INTERNAL_TOKEN"
-    )
-    parser.add_argument("--split", choices=("train", "test", "base"), default="test")
-    parser.add_argument("--llm-backend", choices=("deepseek", "mock"), default="deepseek")
-    parser.add_argument(
-        "--limit", type=int, help="First N tasks from the split; default is all"
-    )
-    parser.add_argument("--concurrency", type=int, default=10)
-    parser.add_argument("--repeat", type=int, default=1)
-    parser.add_argument(
-        "--timeout", type=float, default=10, help="HTTP request timeout in seconds"
-    )
-    parser.add_argument(
-        "--wait", action="store_true", help="Poll executions until terminal state"
-    )
-    parser.add_argument("--poll-interval", type=float, default=1)
-    parser.add_argument("--wait-timeout", type=float, default=180)
-    parser.add_argument("--output", type=Path, help="Write one JSON result per line")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show mapped tasks without HTTP requests"
-    )
-    args = parser.parse_args()
-    if args.limit is not None and args.limit < 1:
-        parser.error("--limit must be positive")
-    if args.concurrency < 1 or args.repeat < 1 or args.timeout <= 0:
-        parser.error("--concurrency, --repeat and --timeout must be positive")
-    if args.poll_interval <= 0 or args.wait_timeout <= 0:
-        parser.error("--poll-interval and --wait-timeout must be positive")
-
-    cases = load_cases(args.split)
-    if args.limit:
-        cases = cases[: args.limit]
-    if args.dry_run:
-        for case in cases:
-            print(json.dumps(asdict(case), ensure_ascii=False))
-        print(
-            f"Mapped {len(cases)} cases; {len(cases) * args.repeat} requests planned."
-        )
-        return 0
-
-    load_dotenv(args.env_file, override=False)
-    token = args.token or os.getenv("AGENT_INTERNAL_TOKEN")
-    if not token:
-        parser.error("set AGENT_INTERNAL_TOKEN in --env-file or pass --token")
-    results = asyncio.run(run(args, cases, token))
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open("w", encoding="utf-8") as output:
-            for result in results:
-                output.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
-    counts = Counter(result.status for result in results)
-    print(
-        f"Submitted {sum(r.execution_id is not None for r in results)}/{len(results)}; status: {dict(counts)}"
-    )
-    for result in results:
-        if result.error:
-            print(
-                f"task {result.task_id} repetition {result.repetition}: {result.status}: {result.error}"
-            )
-    return (
-        1
-        if any(
-            result.status
-            in {"ERROR", "POLL_TIMEOUT", "FAILED", "CANCELLED", "TIMED_OUT"}
-            for result in results
-        )
-        else 0
-    )
-
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit("Use python -m evals.runner --mode concurrency (see --help)")
