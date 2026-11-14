@@ -8,8 +8,6 @@
 
 ![ResolveAI 目标架构图](./60ca69ff-446b-492f-9059-bcb2d1fbbede.png)
 
-[打开可交互的目标架构图](../.archify/architecture-resolveai-target-20261015-214023/resolveai-v2-checked.html)。该图按图片中的目标关系重绘；图稿校验、交付和生成文件一致性检查已通过，浏览器自动检查受当前环境限制，尚未通过。
-
 | 组件 | 目标职责 | 当前工作区状态 |
 | --- | --- | --- |
 | Agent Service（目标 FastAPI :8000） | `/chat`、`/executions`、`/health`；LangGraph 决策与工具编排；执行状态管理 | 已有内部 API、Agent ORM、只读工具、售后状态写工具、运行状态、租约、工具记录与 PostgreSQL 检查点；终端用户认证和执行事件接口尚未接入 |
@@ -18,7 +16,7 @@
 | Commerce Service（目标 :8001） | 商品、客户、订单及退换货 HTTP API，承接业务写操作 | 已有 FastAPI、零售 ORM、Repository、Service 和路由；端口由启动命令决定，当前 README 默认 8000 |
 | PostgreSQL | 目标上分离 Agent 执行数据与商品业务数据 | 本地 Compose 配置在同一实例中创建 `resolveai` 与 `resolveai_agent` 两个数据库，并分别运行迁移 |
 | Benchmark 数据与 runner | 提供商品测试数据、任务定义和导入入口 | 已有固定题库和数据版本；统一 runner 根据场景调用三个 executor，Agent 任务可对业务结果和动作轨迹评分 |
-| 可选观测工具 | Locust、Flower、Prometheus/Grafana、pgAdmin 与 Toxiproxy Dashboard | 已有 Flower、Prometheus、Grafana 和 Blackbox Exporter 的可选 Compose 配置；Locust、pgAdmin 与 Toxiproxy Dashboard 尚未接入 |
+| 可选观测工具 | Locust、Flower、Prometheus/Grafana、pgAdmin 与 Toxiproxy Dashboard | 并发测评已使用 Locust 虚拟用户，Compose 的 `load` profile 提供 Web UI；已有 Flower、Prometheus、Grafana 和 Blackbox Exporter 的可选配置；pgAdmin 与 Toxiproxy Dashboard 尚未接入 |
 
 ## 2. 目标请求链路
 
