@@ -3,7 +3,7 @@
   "title": "ResolveAI Overview",
   "tags": ["resolveai"],
   "schemaVersion": 40,
-  "version": 1,
+  "version": 3,
   "refresh": "15s",
   "time": {"from": "now-1h", "to": "now"},
   "panels": [
@@ -58,6 +58,15 @@
       "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
       "targets": [{"expr": "sum(rabbitmq_queue_messages_ready)", "legendFormat": "ready", "refId": "A"}]
+    },
+    {
+      "id": 7,
+      "title": "Top 5 container memory usage",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "resolveai-prometheus"},
+      "targets": [{"expr": "topk(5, container_memory_working_set_bytes{job=\"cadvisor\",id=~\"/docker/[a-f0-9]+\"} * on(id) group_left(name) docker_container_info)", "legendFormat": "{{name}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
     }
   ]
 }

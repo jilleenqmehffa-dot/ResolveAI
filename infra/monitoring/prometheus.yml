@@ -19,6 +19,14 @@ scrape_configs:
     static_configs:
       - targets: ["toxiproxy:8474"]
 
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: docker_metadata
+    static_configs:
+      - targets: ["docker-metadata:9101"]
+
   - job_name: http_services
     metrics_path: /probe
     params:

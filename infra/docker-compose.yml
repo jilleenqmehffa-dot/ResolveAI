@@ -227,6 +227,25 @@ services:
       - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
     restart: unless-stopped
 
+  cadvisor:
+    profiles: ["monitoring"]
+    image: ghcr.io/google/cadvisor:v0.61.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    restart: unless-stopped
+
+  docker-metadata:
+    profiles: ["monitoring"]
+    image: python:3.12-alpine
+    command: ["python", "/app/docker_metadata.py"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/docker_metadata.py:/app/docker_metadata.py:ro
+    restart: unless-stopped
+
   prometheus:
     profiles: ["monitoring"]
     image: prom/prometheus:v3.14.0
@@ -239,6 +258,8 @@ services:
     depends_on:
       - flower
       - blackbox
+      - cadvisor
+      - docker-metadata
       - rabbitmq
       - toxiproxy
     restart: unless-stopped
