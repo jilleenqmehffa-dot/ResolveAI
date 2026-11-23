@@ -93,14 +93,47 @@ Runner 将模式传给 Executor，后者通过 `/chat` 发送给 Agent API；API
 execution，Celery Worker 从数据库读取并创建对应配置的 MockLLM。修改代码后需重建
 Agent API 和 Worker 容器并执行 Agent 数据库迁移。
 命令行参数可临时覆盖其他场景参数。
-去掉 `--limit` 可运行测试集 40 题。`--repeat 2` 会让每题重复两次。
+`--run-mode count` 是默认模式：`--limit` 选择题目数，`--repeat` 指定每题执行次数，
+总任务数为题目数乘以重复次数；`--concurrency` 指定同时领取任务的 Locust 用户数。
+队列耗尽后测试结束。去掉 `--limit` 会选中测试集 40 题。例如 5 题各执行 100 次，
+最多同时运行 20 个用户：
+
+```bash
+.venv/bin/python -m evals.runner --mode concurrency --all --limit 5 --repeat 100 --concurrency 20 --llm-backend mock --mock-mode fast --web-ui
+```
+
+`--run-mode duration` 按秒运行，`--duration` 必填。`--limit` 只限定循环使用的场景池，
+`--repeat` 在此模式下不限制任务数。指定数量的用户持续从池中轮流选题；到时不再
+开始新流程，已开始的流程完成后写出结果。因此总执行次数取决于实际吞吐率：
+
+```bash
+.venv/bin/python -m evals.runner --mode concurrency --run-mode duration --duration 60 --all --limit 5 --concurrency 20 --llm-backend mock --mock-mode fast --web-ui
+```
+
 `executors/concurrency.py` 使用 Locust 虚拟用户按 `--concurrency` 控制同时执行的
-任务数；每次任务创建独立会话、提交 `/chat` 并等待终态。它按题目与重复次数的
-输入顺序返回状态和耗时，runner 的结果 JSON 格式不变。终端另外显示 HTTP
-吞吐率和完整执行流程的 P95 耗时。Locust 在独立进程中运行，任务完成后自动退出，
+任务数；每次任务创建独立会话、提交 `/chat` 并等待终态。Count 模式按题目与重复
+次数的输入顺序返回状态和耗时；Duration 模式按领取顺序返回。runner 的结果 JSON
+格式不变。终端另外显示 HTTP
+吞吐率和完整执行流程的 P95 耗时。成功或失败的终态任务使用 Agent API 返回的
+`updated_at - created_at` 计算 `total_seconds` 和 Locust 的 `FLOW agent execution`
+耗时，不包含客户端等待下一次轮询的时间；客户端请求失败或轮询超时仍使用本地
+经过时间。轮询间隔仍会影响虚拟用户何时领取下一题，因此可能限制吞吐率。
+若系统时钟在任务中后退，负的服务端时间差记为 0，不将已成功任务误判为失败。
+Locust 在独立进程中运行，任务完成后自动退出，
 避免 gevent 补丁影响其他测评模式。此模式不计算任务正确率。
-需要在浏览器实时查看或持续施压时，按[基础设施说明](../infra/README.md#locust-可视化压测)
-启动 Docker 中的 Locust Web UI。
+需要在浏览器查看**这次 runner 测试**的实时曲线和结束后的统计时，加 `--web-ui`：
+在仓库根目录的 Bash/WSL 终端执行下面的命令；只打开网址不会启动 Web UI。
+
+```bash
+.venv/bin/python -m evals.runner --mode concurrency --all --limit 3 --concurrency 3 --repeat 2 --web-ui
+```
+
+打开 `http://127.0.0.1:8090`。runner 负责选题、启动和停止测试；不要在页面中
+重新启动或重置测试。测试完成后，runner 会先写出逐题 JSON 和运行摘要，再保持
+Web UI 开放；查看完毕在运行命令的终端按 Ctrl+C 关闭。端口可用 `--web-port`
+调整，例如 `--web-port 8091`。这个页面由本次 runner 的 Locust 进程提供，
+与 Docker 中 `8089` 的交互式 Locust 服务相互独立。若要在浏览器中持续随机选题
+施压，按[基础设施说明](../infra/README.md#locust-可视化压测)启动 Docker Web UI。
 共享业务库中的写操作可能影响其他题；正确率评估应使用 `agent-task` 串行模式和
 可重建测试库。
 

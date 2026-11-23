@@ -9,7 +9,7 @@ docker compose --env-file .env -f infra/docker-compose.yml --profile monitoring 
 ```
 
 第一条启动业务服务、两个逻辑数据库、RabbitMQ、Worker、beat 和 Toxiproxy。
-第二条启动 Flower、Prometheus、Blackbox Exporter 与 Grafana。监控界面仅绑定
+第二条启动 Flower、Prometheus、Blackbox Exporter、cAdvisor、Docker 容器元数据导出器与 Grafana。监控界面仅绑定
 宿主机回环地址：Flower `http://127.0.0.1:5555`、Prometheus
 `http://127.0.0.1:9090`、Grafana `http://127.0.0.1:3000`。若宿主机 3000
 端口被占用，可在 `.env` 中设置 `GRAFANA_PORT=3001` 等空闲端口。
@@ -43,7 +43,9 @@ docker compose --env-file .env -f infra/docker-compose.yml --profile load stop l
 ```
 
 命令行的 `evals.runner --mode concurrency` 仍用于固定任务量的测评，结果写入
-`evals/reports/concurrency/`；Docker 中的 Locust Web UI 用于交互式持续压测。
+`evals/reports/concurrency/`；加 `--web-ui` 可在 `http://127.0.0.1:8090` 查看
+同一次 runner 运行的 Locust 统计，详见[统一测评入口](../docs/bench_client.md#并发与网络故障)。
+Docker 中的 `8089` Web UI 是独立的交互式持续压测服务，不显示 runner 的结果。
 
 ## 网络故障
 
@@ -71,8 +73,12 @@ python3 infra/toxiproxy/control.py reset
 ## 监控范围
 
 Prometheus 收集 Flower 的 Worker 与任务事件、RabbitMQ 队列指标、Toxiproxy
-指标，并通过 Blackbox Exporter 探测 Agent `/ready`、Commerce `/health` 及
+指标及 cAdvisor 的 Docker 容器 CPU、内存等资源指标，并通过 Blackbox Exporter 探测 Agent `/ready`、Commerce `/health` 及
 Agent→Commerce 代理链路。Grafana 自动配置 Prometheus 数据源和
 `ResolveAI Overview` 仪表盘。Flower 依赖 Worker 的 Celery 事件，Worker 在
-Compose 中使用 `-E` 启动。当前监控覆盖服务可用性、任务事件及队列；业务执行
+Compose 中使用 `-E` 启动。cAdvisor 的 `/metrics` 仅在 Compose 网络内供 Prometheus 抓取；
+Docker 元数据导出器通过 Docker socket 提供容器 ID、名称和 Compose 服务名，供 Prometheus
+按容器 ID 与 cAdvisor 指标关联。可在 Prometheus 的 Targets 页面检查 `cadvisor` 和
+`docker_metadata` 任务。Grafana 的 `ResolveAI Overview` 包含按容器名称显示的内存用量面板。
+当前监控覆盖服务可用性、任务事件、队列及容器资源；业务执行
 状态分布和工具调用耗时尚未导出为 Prometheus 指标。
