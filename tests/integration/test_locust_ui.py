@@ -32,7 +32,7 @@ def test_locustfile_runs_agent_flow_against_http_server():
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status":"SUCCEEDED"}')
+            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.200000+00:00"}')
 
         def log_message(self, *_args):
             pass

@@ -73,6 +73,31 @@ def test_scenario_rejects_invalid_concurrency_before_execution() -> None:
         ])
 
 
+def test_duration_preview_has_no_fixed_request_count(capsys) -> None:
+    assert runner.main([
+        "--mode", "concurrency", "--all", "--limit", "5",
+        "--run-mode", "duration", "--duration", "60", "--repeat", "100",
+        "--concurrency", "20", "--dry-run",
+    ]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["run_mode"] == "duration"
+    assert preview["duration_seconds"] == 60
+    assert preview["planned_requests"] is None
+    assert preview["repeat"] is None
+    assert len(preview["task_ids"]) == 5
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--run-mode", "duration"],
+    ["--duration", "10"],
+    ["--run-mode", "duration", "--duration", "0"],
+    ["--run-mode", "duration", "--duration", "nan"],
+])
+def test_duration_requires_valid_mode_and_positive_seconds(arguments) -> None:
+    with pytest.raises(SystemExit):
+        runner.main(["--mode", "concurrency", "--all", "--dry-run", *arguments])
+
+
 def test_agent_scenario_rejects_fault_options() -> None:
     with pytest.raises(SystemExit):
         runner.main([

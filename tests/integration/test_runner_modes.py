@@ -1,7 +1,13 @@
 """The unified runner dispatches load and fault modules with one CLI."""
 
 import json
+import os
+import signal
+import socket
+import subprocess
+import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
 
@@ -9,6 +15,7 @@ import httpx
 import pytest
 
 from evals import runner
+from evals.clients.execution_timing import completed_run_seconds
 from evals.executors import network_fault as network_executor
 
 
@@ -33,6 +40,13 @@ def inputs(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "test-token")
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
     return config_path, tmp_path / "results.json"
+
+
+def test_completed_run_clock_reversal_does_not_become_a_task_failure():
+    assert completed_run_seconds({
+        "created_at": "2026-11-15T12:33:51.500000+00:00",
+        "updated_at": "2026-11-15T12:33:50.950000+00:00",
+    }) == 0.0
 
 
 @pytest.mark.parametrize("fail_chat", [False, True])
@@ -64,7 +78,7 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status":"SUCCEEDED"}')
+            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.200000+00:00"}')
 
         def log_message(self, *_args):
             pass
@@ -97,6 +111,7 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
     ]
     assert {row["status"] for row in rows} == ({"SUCCEEDED", "ERROR"} if fail_chat else {"SUCCEEDED"})
     assert len({row["conversation_id"] for row in rows}) == 4
+    assert all(row["total_seconds"] == pytest.approx(0.2) for row in rows if row["status"] == "SUCCEEDED")
     assert len({payload["idempotency_key"] for payload in received}) == 4
     assert {payload["llm_backend"] for payload in received} == {"mock"}
     assert {payload["mock_mode"] for payload in received} == {"latency"}
@@ -106,6 +121,132 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
     assert receipt["summary"]["total"] == 4
     assert receipt["mode"] == "concurrency"
     assert receipt["mock_mode"] == "latency"
+
+
+def test_duration_mode_cycles_cases_and_drains_started_flows(inputs):
+    config_path, output = inputs
+    submitted = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
+            if self.path == "/conversations":
+                status, body = 201, {"conversation_id": str(uuid4())}
+            elif self.path == "/chat":
+                submitted.append(payload["idempotency_key"])
+                status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+            else:
+                status, body = 404, {}
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def do_GET(self):
+            time.sleep(0.04)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.020000+00:00"}')
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    config_path.write_text(config_path.read_text().replace("http://agent.test", f"http://127.0.0.1:{server.server_port}"))
+    try:
+        assert runner.main([
+            "--config", str(config_path), "--mode", "concurrency", "--all",
+            "--run-mode", "duration", "--duration", "0.3", "--repeat", "1",
+            "--concurrency", "2", "--output", str(output),
+        ]) == 0
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
+    rows = json.loads(output.read_text())
+    assert len(rows) > 2  # --repeat 1 does not cap a duration run.
+    assert {row["task_id"] for row in rows} == {"one", "two"}
+    assert all(row["status"] == "SUCCEEDED" for row in rows)
+    assert len(rows) == len(submitted)  # Every flow started before the deadline was drained.
+    assert len(set(submitted)) == len(submitted)
+    receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
+    assert receipt["run_mode"] == "duration"
+    assert receipt["duration_seconds"] == 0.3
+    assert receipt["repeat"] is None
+    assert receipt["summary"]["total"] == len(rows)
+
+
+def test_runner_web_ui_shows_the_same_finite_workload(inputs):
+    config_path, output = inputs
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            if self.path == "/conversations":
+                status, body = 201, {"conversation_id": str(uuid4())}
+            elif self.path == "/chat":
+                status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+            else:
+                status, body = 404, {}
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.020000+00:00"}')
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    config_path.write_text(config_path.read_text().replace("http://agent.test", f"http://127.0.0.1:{server.server_port}"))
+    config_path.write_text(config_path.read_text().replace("poll_interval: 0.001", "poll_interval: 0.1"))
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        web_port = listener.getsockname()[1]
+    process = subprocess.Popen(
+        [
+            sys.executable, "-m", "evals.runner", "--config", str(config_path),
+            "--mode", "concurrency", "--task-id", "one", "--repeat", "2",
+            "--concurrency", "1", "--web-ui", "--web-port", str(web_port),
+            "--output", str(output),
+        ],
+        env=os.environ.copy(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not output.exists() and time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            time.sleep(0.1)
+        assert output.exists(), process.communicate(timeout=1)
+        rows = json.loads(output.read_text())
+        assert [(row["task_id"], row["repetition"]) for row in rows] == [("one", 1), ("one", 2)]
+        assert all(row["total_seconds"] == pytest.approx(0.02) for row in rows)
+        response = httpx.get(f"http://127.0.0.1:{web_port}/stats/requests", timeout=3)
+        response.raise_for_status()
+        stats = response.json()["stats"]
+        assert any(row["method"] == "FLOW" and row["name"] == "agent execution" and row["num_requests"] == 2 and row["avg_response_time"] == pytest.approx(20, abs=1) for row in stats)
+        assert process.poll() is None
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=10)
+        assert process.returncode == 0, (stdout, stderr)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=10)
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
 
 
 def test_network_fault_mode_restores_proxy_even_if_run_raises(inputs, monkeypatch):

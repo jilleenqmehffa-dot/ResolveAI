@@ -11,6 +11,7 @@ from gevent import sleep
 from locust import HttpUser, constant, task
 
 from evals.clients.benchmark_client import load_cases
+from evals.clients.execution_timing import completed_run_seconds
 
 CASES = load_cases(os.getenv("LOCUST_SPLIT", "test"))
 TOKEN = os.getenv("AGENT_INTERNAL_TOKEN")
@@ -59,6 +60,7 @@ class AgentUser(HttpUser):
         headers = {"X-Agent-Token": TOKEN, "X-Customer-ID": case.customer_id}
         started = time.monotonic()
         error = None
+        flow_seconds = None
         try:
             conversation = self.request_json(
                 "POST", "/conversations", headers, name="POST /conversations", expected=201,
@@ -75,6 +77,7 @@ class AgentUser(HttpUser):
             )
             status = submission["status"]
             execution_id = submission["execution_id"]
+            terminal_response = submission
             deadline = time.monotonic() + WAIT_TIMEOUT
             while status not in TERMINAL:
                 if time.monotonic() >= deadline:
@@ -85,8 +88,13 @@ class AgentUser(HttpUser):
                     name="GET /executions/:id",
                 )
                 status = execution["status"]
+                terminal_response = execution
+                if status in TERMINAL:
+                    flow_seconds = completed_run_seconds(terminal_response)
                 if status != "SUCCEEDED" and status in TERMINAL:
                     raise RuntimeError(execution.get("error_code") or status)
+            if flow_seconds is None:
+                flow_seconds = completed_run_seconds(terminal_response)
             if status != "SUCCEEDED":
                 raise RuntimeError(status)
         except Exception as exc:  # noqa: BLE001 - mark this flow failed and keep the load running
@@ -94,6 +102,7 @@ class AgentUser(HttpUser):
         finally:
             self.environment.events.request.fire(
                 request_type="FLOW", name="agent execution",
-                response_time=(time.monotonic() - started) * 1000, response_length=0,
+                response_time=(flow_seconds if flow_seconds is not None else time.monotonic() - started) * 1000,
+                response_length=0,
                 exception=error, context={},
             )

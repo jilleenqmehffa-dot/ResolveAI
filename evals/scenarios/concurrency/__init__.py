@@ -1,5 +1,6 @@
 """Concurrent submission dataset and load settings."""
 
+import math
 from argparse import Namespace
 from pathlib import Path
 
@@ -20,11 +21,17 @@ def prepare(args: Namespace) -> Scenario:
     mock_mode = args.mock_mode or str(config.get("mock_mode", "fast"))
     if backend != "mock" and mock_mode != "fast":
         raise ValueError("latency mock mode requires --llm-backend mock")
+    if args.run_mode == "duration" and (
+        args.duration is None or not math.isfinite(args.duration) or args.duration <= 0
+    ):
+        raise ValueError("duration must be a positive finite number of seconds")
     return make_scenario(
         "concurrency", inputs,
         llm_backend=backend,
         mock_mode=mock_mode,
         concurrency=args.concurrency or int(config.get("concurrency", 10)),
         repeat=args.repeat if args.repeat is not None else int(config.get("repeat", 1)),
+        run_mode=args.run_mode,
+        duration_seconds=args.duration,
         required_services=SERVICES,
     )

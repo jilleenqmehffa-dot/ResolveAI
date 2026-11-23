@@ -115,6 +115,8 @@ class Scenario:
     toxiproxy_api: str | None = None
     rebuild_each_task: bool = False
     test_database_url: str | None = None
+    run_mode: str = "count"
+    duration_seconds: float | None = None
 
     @property
     def required_client_env(self) -> tuple[str, ...]:
@@ -142,11 +144,16 @@ class Scenario:
             "dataset_version": self.inputs.dataset_version,
             "split": self.inputs.split,
             "task_ids": [str(task["id"]) for task in self.inputs.tasks],
-            "planned_requests": len(self.inputs.tasks) * self.repeat,
+            "planned_requests": (
+                None if self.mode == "concurrency" and self.run_mode == "duration"
+                else len(self.inputs.tasks) * self.repeat
+            ),
+            "run_mode": self.run_mode if self.mode == "concurrency" else None,
+            "duration_seconds": self.duration_seconds,
             "llm_backend": self.llm_backend,
             "mock_mode": self.mock_mode,
             "concurrency": self.concurrency,
-            "repeat": self.repeat,
+            "repeat": None if self.mode == "concurrency" and self.run_mode == "duration" else self.repeat,
             "fault": self.fault,
             "fault_ms": self.fault_ms,
             "toxiproxy_api": self.toxiproxy_api,
@@ -163,6 +170,8 @@ def make_scenario(
     rebuild_each_task: bool = False,
     test_database_url: str | None = None,
     mock_mode: str = "fast",
+    run_mode: str = "count",
+    duration_seconds: float | None = None,
 ) -> Scenario:
     if llm_backend not in {"deepseek", "mock"}:
         raise ValueError("llm_backend must be deepseek or mock")
@@ -177,4 +186,5 @@ def make_scenario(
     return Scenario(
         mode, inputs, llm_backend, concurrency, repeat, required_services,
         mock_mode, fault, fault_ms, toxiproxy_api, rebuild_each_task, test_database_url,
+        run_mode, duration_seconds,
     )
