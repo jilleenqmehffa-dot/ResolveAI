@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from hmac import compare_digest
+from time import perf_counter
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from kombu.exceptions import OperationalError
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
@@ -18,8 +19,9 @@ from services.agent_service.app.core.config import get_settings
 from services.agent_service.app.db.session import get_agent_session_factory
 from services.agent_service.app.execution.lifecycle import (
     IdempotencyBackendConflict,
+    SubmittedRun,
     cancel_run,
-    submit_run,
+    submit_run_details,
 )
 from services.agent_service.app.models.agent import (
     AgentRun,
@@ -63,7 +65,7 @@ def _caller(
     return x_customer_id
 
 
-def _run_response(run: AgentRun) -> RunResponse:
+def _run_response(run: AgentRun | SubmittedRun) -> RunResponse:
     return RunResponse(
         execution_id=run.id,
         conversation_id=run.conversation_id,
@@ -116,10 +118,15 @@ def create_app() -> FastAPI:
             return {"conversation_id": conversation.id}
 
     @app.post("/chat", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
-    def chat(request: ChatRequest, customer_id: str = Depends(_caller)) -> RunResponse:
+    def chat(
+        request: ChatRequest,
+        response: Response,
+        customer_id: str = Depends(_caller),
+    ) -> RunResponse:
         sessions = get_agent_session_factory()
+        started = perf_counter()
         try:
-            run_id = submit_run(
+            submitted_run = submit_run_details(
                 sessions,
                 conversation_id=request.conversation_id,
                 customer_id=customer_id,
@@ -135,14 +142,21 @@ def create_app() -> FastAPI:
             ) from exc
         except IdempotencyBackendConflict as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        submitted = perf_counter()
         try:
-            execute_run.delay(str(run_id))
+            execute_run.delay(str(submitted_run.id))
         except OperationalError:
             # The durable QUEUED row is picked up by the periodic scanner.
             pass
-        with sessions() as session:
-            run = session.get(AgentRun, run_id)
-            return _run_response(run)
+        published = perf_counter()
+        result = _run_response(submitted_run)
+        responded = perf_counter()
+        response.headers["Server-Timing"] = (
+            f"db;dur={(submitted - started) * 1000:.2f}, "
+            f"broker;dur={(published - submitted) * 1000:.2f}, "
+            f"response;dur={(responded - published) * 1000:.2f}"
+        )
+        return result
 
     @app.get("/executions/{run_id}", response_model=RunResponse)
     def get_execution(run_id: UUID, customer_id: str = Depends(_caller)) -> RunResponse:

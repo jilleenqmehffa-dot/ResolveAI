@@ -357,6 +357,10 @@ def test_api_submission_is_idempotent_and_customer_scoped(monkeypatch) -> None:
     first = client.post("/chat", headers=headers, json=payload)
     second = client.post("/chat", headers=headers, json=payload)
     assert first.status_code == second.status_code == 202
+    assert all(
+        part in first.headers["server-timing"]
+        for part in ("db;dur=", "broker;dur=", "response;dur=")
+    )
     assert first.json()["execution_id"] == second.json()["execution_id"]
     run_id = first.json()["execution_id"]
     assert UUID(run_id) in due_run_ids(get_agent_session_factory())
@@ -364,6 +368,10 @@ def test_api_submission_is_idempotent_and_customer_scoped(monkeypatch) -> None:
     cancelled = client.post(f"/executions/{run_id}/cancel", headers=headers)
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "CANCELLED"
+    repeated = client.post("/chat", headers=headers, json=payload)
+    assert repeated.status_code == 202
+    assert repeated.json()["execution_id"] == run_id
+    assert repeated.json()["status"] == "CANCELLED"
 
 
 @pytest.mark.asyncio

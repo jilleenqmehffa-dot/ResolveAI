@@ -48,7 +48,36 @@ class ClaimedRun:
     resumed: bool
 
 
-def submit_run(
+@dataclass(frozen=True, slots=True)
+class SubmittedRun:
+    id: UUID
+    conversation_id: UUID
+    status: AgentRunStatus
+    llm_backend: str
+    mock_mode: str
+    attempt_count: int
+    result_text: str | None
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_run(cls, run: AgentRun) -> SubmittedRun:
+        return cls(
+            id=run.id,
+            conversation_id=run.conversation_id,
+            status=run.status,
+            llm_backend=run.llm_backend,
+            mock_mode=run.mock_mode,
+            attempt_count=run.attempt_count,
+            result_text=run.result_text,
+            error_code=run.error_code,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+        )
+
+
+def submit_run_details(
     sessions: sessionmaker[Session],
     *,
     conversation_id: UUID,
@@ -58,7 +87,7 @@ def submit_run(
     total_timeout_seconds: float,
     llm_backend: LLMBackend | str = LLMBackend.DEEPSEEK,
     mock_mode: MockMode | str = MockMode.FAST,
-) -> UUID:
+) -> SubmittedRun:
     """Create one run per conversation/key while holding the conversation lock."""
     if not content.strip() or not idempotency_key.strip() or total_timeout_seconds <= 0:
         raise ValueError("message, idempotency key, and timeout are required")
@@ -79,7 +108,7 @@ def submit_run(
                 raise IdempotencyBackendConflict("idempotency key has a different LLM backend")
             if existing.mock_mode != selected_mock_mode.value:
                 raise IdempotencyBackendConflict("idempotency key has a different Mock LLM mode")
-            return existing.id
+            return SubmittedRun.from_run(existing)
         seq = conversation.next_message_seq
         conversation.next_message_seq += 1
         message = Message(
@@ -101,7 +130,31 @@ def submit_run(
         )
         session.add(run)
         session.flush()
-        return run.id
+        return SubmittedRun.from_run(run)
+
+
+def submit_run(
+    sessions: sessionmaker[Session],
+    *,
+    conversation_id: UUID,
+    customer_id: str,
+    content: str,
+    idempotency_key: str,
+    total_timeout_seconds: float,
+    llm_backend: LLMBackend | str = LLMBackend.DEEPSEEK,
+    mock_mode: MockMode | str = MockMode.FAST,
+) -> UUID:
+    """Return the durable run ID for callers that do not need response fields."""
+    return submit_run_details(
+        sessions,
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        content=content,
+        idempotency_key=idempotency_key,
+        total_timeout_seconds=total_timeout_seconds,
+        llm_backend=llm_backend,
+        mock_mode=mock_mode,
+    ).id
 
 
 def claim_run(
