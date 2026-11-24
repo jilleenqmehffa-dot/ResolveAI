@@ -116,6 +116,8 @@ services:
     build: *agent-build
     environment:
       <<: *agent-env
+      AGENT_DB_POOL_SIZE: ${AGENT_DB_POOL_SIZE:-10}
+      AGENT_DB_MAX_OVERFLOW: ${AGENT_DB_MAX_OVERFLOW:-10}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
