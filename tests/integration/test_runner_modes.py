@@ -115,7 +115,11 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
     assert len({payload["idempotency_key"] for payload in received}) == 4
     assert {payload["llm_backend"] for payload in received} == {"mock"}
     assert {payload["mock_mode"] for payload in received} == {"latency"}
-    assert "Locust: 2 users, 4 executions" in capsys.readouterr().out
+    output_text = capsys.readouterr().out
+    expected_successes = 2 if fail_chat else 4
+    assert f"Locust: 2 users, 4 executions, {expected_successes} succeeded" in output_text
+    assert "successful tasks/s" in output_text
+    assert "HTTP req/s" not in output_text
     receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
     assert receipt["result_file"] == str(actual_output.resolve())
     assert receipt["summary"]["total"] == 4

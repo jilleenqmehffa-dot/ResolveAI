@@ -53,7 +53,8 @@ def print_metrics(payload: dict) -> None:
     metrics = payload["metrics"]
     print(
         f"Locust: {metrics['users']} users, {metrics['flows']} executions, "
-        f"{metrics['http_rps']:.2f} HTTP req/s, "
+        f"{metrics['successful_tasks']} succeeded, "
+        f"{metrics['successful_tasks_per_second']:.2f} successful tasks/s, "
         f"execution p95 {metrics['execution_p95_ms']:.0f} ms"
     )
 
@@ -252,10 +253,12 @@ def run_locust(workload: dict, token: str, *, web_port: int | None = None,
         duration = time.monotonic() - started
         entries = environment.stats.entries
         flow = entries.get(("agent execution", "FLOW"))
+        successful_tasks = sum(row["status"] == "SUCCEEDED" for row in results.values())
         metrics = {
             "users": users,
             "flows": len(results),
-            "http_rps": sum(entry.num_requests for entry in entries.values() if entry.method != "FLOW") / duration,
+            "successful_tasks": successful_tasks,
+            "successful_tasks_per_second": successful_tasks / duration,
             "execution_p95_ms": flow.get_response_time_percentile(0.95) if flow else 0,
         }
         payload = {"results": [results[index] for index in sorted(results)], "metrics": metrics}

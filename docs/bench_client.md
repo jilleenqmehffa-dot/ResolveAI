@@ -113,8 +113,10 @@ Agent API 和 Worker 容器并执行 Agent 数据库迁移。
 `executors/concurrency.py` 使用 Locust 虚拟用户按 `--concurrency` 控制同时执行的
 任务数；每次任务创建独立会话、提交 `/chat` 并等待终态。Count 模式按题目与重复
 次数的输入顺序返回状态和耗时；Duration 模式按领取顺序返回。runner 的结果 JSON
-格式不变。终端另外显示 HTTP
-吞吐率和完整执行流程的 P95 耗时。成功或失败的终态任务使用 Agent API 返回的
+格式不变。终端另外显示成功完成的任务数、每秒成功完成的任务数
+（成功任务数除以从启动虚拟用户到所有已开始流程结束的时间），以及完整执行流程的
+P95 耗时。失败或超时的任务不计入每秒成功完成任务数。Locust Web UI 仍按各
+HTTP 路由展示请求指标。成功或失败的终态任务使用 Agent API 返回的
 `updated_at - created_at` 计算 `total_seconds` 和 Locust 的 `FLOW agent execution`
 耗时，不包含客户端等待下一次轮询的时间；客户端请求失败或轮询超时仍使用本地
 经过时间。轮询间隔仍会影响虚拟用户何时领取下一题，因此可能限制吞吐率。
