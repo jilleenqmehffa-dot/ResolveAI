@@ -15,7 +15,13 @@ def agent_database_url() -> str:
 
 @lru_cache
 def get_agent_engine() -> Engine:
-    return create_engine(agent_database_url(), pool_pre_ping=True)
+    settings = get_settings()
+    return create_engine(
+        settings.require_agent_database_url(),
+        pool_pre_ping=True,
+        pool_size=settings.agent_db_pool_size,
+        max_overflow=settings.agent_db_max_overflow,
+    )
 
 
 @lru_cache

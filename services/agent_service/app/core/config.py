@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     rabbitmq_url: str = "amqp://guest:guest@localhost//"
     commerce_base_url: str = "http://localhost:8001"
     agent_internal_token: str | None = None
+    agent_db_pool_size: int = Field(default=5, ge=1)
+    agent_db_max_overflow: int = Field(default=10, ge=0)
     agent_max_attempts: int = Field(default=3, ge=1)
     agent_run_timeout_seconds: float = Field(default=120, gt=0)
     agent_retry_base_seconds: float = Field(default=1, gt=0)
