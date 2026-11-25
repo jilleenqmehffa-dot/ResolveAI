@@ -1,4 +1,4 @@
-"""Agent conversation, memory, run, and tool execution records."""
+"""Agent conversation, run, and tool execution records."""
 
 from __future__ import annotations
 
@@ -43,12 +43,6 @@ class ConversationStatus(str, Enum):
 class MessageRole(str, Enum):
     USER = "USER"
     ASSISTANT = "ASSISTANT"
-
-
-class MemoryType(str, Enum):
-    PREFERENCE = "PREFERENCE"
-    PROFILE = "PROFILE"
-    OTHER = "OTHER"
 
 
 class AgentRunStatus(str, Enum):
@@ -174,11 +168,6 @@ class Message(Base):
         primaryjoin="Message.id == ConversationSummary.last_message_id",
         passive_deletes=True,
     )
-    sourced_memories: Mapped[list[CustomerMemory]] = relationship(
-        back_populates="source_message",
-        foreign_keys="CustomerMemory.source_message_id",
-        passive_deletes=True,
-    )
 
 
 class ConversationSummary(Base):
@@ -226,50 +215,6 @@ class ConversationSummary(Base):
         back_populates="covered_summaries",
         foreign_keys=[last_message_id],
         primaryjoin="ConversationSummary.last_message_id == Message.id",
-    )
-
-
-class CustomerMemory(Base):
-    __tablename__ = "customer_memories"
-    __table_args__ = (
-        Index(
-            "ix_customer_memories_customer_id_memory_type", "customer_id", "memory_type"
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
-    customer_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    memory_type: Mapped[MemoryType] = mapped_column(
-        db_enum(MemoryType, "agent_memory_type"), nullable=False
-    )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    source_message_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("messages.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-        server_default=func.now(),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
-        server_default=func.now(),
-    )
-
-    source_message: Mapped[Message | None] = relationship(
-        back_populates="sourced_memories", foreign_keys=[source_message_id]
     )
 
 

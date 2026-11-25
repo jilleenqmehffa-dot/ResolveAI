@@ -97,7 +97,7 @@ uv run --env-file .env alembic -c services/agent_service/alembic.ini check
 ```
 
 迁移链从 `a1f3c6d8e920` 开始，独立于 Commerce 迁移链。Agent 模型复用项目已有的
-`Base`；Agent Alembic 只读取六张 Agent 表的 metadata。迁移不会创建 Commerce 表。
+`Base`；Agent Alembic 只读取五张 Agent 表的 metadata。迁移不会创建 Commerce 表。
 
 对一个已升级的独立测试库设置 `AGENT_TEST_DATABASE_URL` 后，可运行：
 
@@ -106,6 +106,6 @@ uv run pytest -q tests/integration/test_agent_orm.py tests/integration/test_agen
 ```
 
 `customer_id` 是 Commerce 的外部标识，无跨库外键。提交运行时，Service 层会创建
-`USER` 触发消息；写入 `CustomerMemory` 时仍须校验来源消息所属会话的客户 ID。
+`USER` 触发消息。
 更新时间由 ORM 更新时维护；绕过 ORM 的直接 SQL 更新须自行维护 `updated_at`。
-LangGraph 检查点表由 Checkpointer 管理，不属于 Agent Alembic 的六张业务表。
+LangGraph 检查点表由 Checkpointer 管理，不属于 Agent Alembic 的五张业务表。

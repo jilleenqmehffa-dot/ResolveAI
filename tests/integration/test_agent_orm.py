@@ -5,7 +5,6 @@ Alembic upgrade against it. The tests use transactions and leave rows intact.
 """
 
 import os
-from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, inspect, select, text
@@ -17,8 +16,6 @@ from services.agent_service.app.models import (
     AgentRun,
     Conversation,
     ConversationSummary,
-    CustomerMemory,
-    MemoryType,
     Message,
     MessageRole,
     ToolExecution,
@@ -73,15 +70,7 @@ def test_relationships_and_defaults(session):
         request_payload={"order": 1},
     )
     run.tool_executions.append(tool)
-    expiry = datetime.now(UTC) + timedelta(days=30)
-    memory = CustomerMemory(
-        customer_id=conversation.customer_id,
-        memory_type=MemoryType.PREFERENCE,
-        content="Blue",
-        source_message=message,
-        expires_at=expiry,
-    )
-    session.add_all([summary, run, memory])
+    session.add_all([summary, run])
     session.flush()
     session.expire_all()
 
@@ -92,8 +81,6 @@ def test_relationships_and_defaults(session):
     assert loaded.agent_runs[0].trigger_message.id == message.id
     assert loaded.agent_runs[0].llm_backend == "deepseek"
     assert loaded.agent_runs[0].tool_executions[0].agent_run.id == run.id
-    assert session.get(Message, message.id).sourced_memories[0].id == memory.id
-    assert session.get(CustomerMemory, memory.id).expires_at == expiry
     assert tool.attempt_count == 0
     assert tool.status.value == "PENDING"
     assert conversation.created_at.tzinfo is not None
@@ -166,13 +153,7 @@ def test_delete_policy_and_customer_id_is_external(session):
     run.tool_executions.append(
         ToolExecution(tool_call_id="audit", tool_name="a", max_attempts=1)
     )
-    memory = CustomerMemory(
-        customer_id="commerce-customer-1",
-        memory_type=MemoryType.PROFILE,
-        content="Fact",
-        source_message=message,
-    )
-    session.add_all([run, memory])
+    session.add(run)
     session.flush()
     with pytest.raises(IntegrityError), session.begin_nested():
         session.execute(text("DELETE FROM messages WHERE id = :id"), {"id": message.id})
@@ -194,25 +175,11 @@ def test_delete_policy_and_customer_id_is_external(session):
     )
 
 
-def test_source_message_delete_sets_null(session):
-    _conversation, message = seed(session)
-    memory = CustomerMemory(
-        customer_id="external",
-        memory_type=MemoryType.OTHER,
-        content="Note",
-        source_message=message,
-    )
-    session.add(memory)
-    session.flush()
-    session.execute(text("DELETE FROM messages WHERE id = :id"), {"id": message.id})
-    session.expire(memory)
-    assert memory.source_message_id is None
-
-
 def test_metadata_matches_migrated_schema(engine):
     assert set(agent_metadata.tables) == AGENT_TABLES
     inspector = inspect(engine)
     assert AGENT_TABLES <= set(inspector.get_table_names())
+    assert "customer_memories" not in inspector.get_table_names()
     assert {
         column["name"] for column in inspector.get_columns("tool_executions")
     } == set(agent_metadata.tables["tool_executions"].columns.keys())
@@ -224,4 +191,12 @@ def test_metadata_matches_migrated_schema(engine):
                 .where(text("typname = 'agent_tool_execution_status'"))
             )
             == 1
+        )
+        assert (
+            connection.scalar(
+                select(text("count(*)"))
+                .select_from(text("pg_type"))
+                .where(text("typname = 'agent_memory_type'"))
+            )
+            == 0
         )
