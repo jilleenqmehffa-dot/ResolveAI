@@ -130,7 +130,7 @@ def finish_run(raw_results, scenario, inputs, output: Path, process=None) -> int
                 for name in ("task_success", "trajectory")
             )
         )
-    failed = {"ERROR", "POLL_TIMEOUT", "FAILED", "CANCELLED", "TIMED_OUT"}
+    failed = {"ERROR", "POLL_TIMEOUT", "COMPLETION_TIMEOUT", "FAILED", "CANCELLED", "TIMED_OUT"}
     print(f"Status counts: {dict(Counter(row['status'] for row in rows))}")
     exit_code = 1 if any(row["error"] or row["status"] in failed for row in rows) else 0
     if process is not None:

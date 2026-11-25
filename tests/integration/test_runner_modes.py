@@ -4,18 +4,22 @@ import json
 import os
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy.engine import make_url
 
 from evals import runner
 from evals.clients.execution_timing import completed_run_seconds
+from evals.executors import concurrency as concurrency_executor
 from evals.executors import network_fault as network_executor
 
 
@@ -38,8 +42,28 @@ def inputs(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("AGENT_INTERNAL_TOKEN", "test-token")
+    agent_db = tmp_path / "agent.db"
+    with sqlite3.connect(agent_db) as connection:
+        connection.execute(
+            "CREATE TABLE agent_runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, "
+            "error_code TEXT, created_at TEXT NOT NULL, finished_at TEXT)"
+        )
+    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite+pysqlite:///{agent_db}")
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
     return config_path, tmp_path / "results.json"
+
+
+def finish_fake_run(execution_id, seconds=0.2):
+    database_url = os.environ["AGENT_DATABASE_URL"]
+    database_path = make_url(database_url).database
+    created = datetime(2026, 11, 15)
+    finished = created + timedelta(seconds=seconds)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?)",
+            (execution_id.replace("-", ""), "SUCCEEDED", None,
+             created.isoformat(" "), finished.isoformat(" ")),
+        )
 
 
 def test_completed_run_clock_reversal_does_not_become_a_task_failure():
@@ -47,6 +71,55 @@ def test_completed_run_clock_reversal_does_not_become_a_task_failure():
         "created_at": "2026-11-15T12:33:51.500000+00:00",
         "updated_at": "2026-11-15T12:33:50.950000+00:00",
     }) == 0.0
+
+
+def test_collect_run_results_reads_late_terminal_state_and_marks_timeout(inputs):
+    completed_id, pending_id = str(uuid4()), str(uuid4())
+    database_path = make_url(os.environ["AGENT_DATABASE_URL"]).database
+    created = "2026-11-15 00:00:00.000000"
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            "INSERT INTO agent_runs VALUES (?, 'RUNNING', NULL, ?, NULL)",
+            [(run_id.replace("-", ""), created) for run_id in (completed_id, pending_id)],
+        )
+
+    def finish_later():
+        time.sleep(0.03)
+        with sqlite3.connect(database_path) as connection:
+            connection.execute(
+                "UPDATE agent_runs SET status = 'FAILED', error_code = 'mock_failed', "
+                "finished_at = '2026-11-15 00:00:00.300000' WHERE id = ?",
+                (completed_id.replace("-", ""),),
+            )
+
+    thread = threading.Thread(target=finish_later)
+    thread.start()
+    results = {
+        0: {"execution_id": completed_id, "status": "QUEUED", "error": None, "total_seconds": None},
+        1: {"execution_id": pending_id, "status": "QUEUED", "error": None, "total_seconds": None},
+    }
+    try:
+        concurrency_executor.collect_run_results(
+            results, os.environ["AGENT_DATABASE_URL"], interval=0.01, timeout=0.1,
+        )
+    finally:
+        thread.join(timeout=1)
+    assert results[0]["status"] == "FAILED"
+    assert results[0]["error"] == "mock_failed"
+    assert results[0]["total_seconds"] == pytest.approx(0.3)
+    assert results[1]["status"] == "COMPLETION_TIMEOUT"
+    assert results[1]["total_seconds"] is None
+
+
+def test_concurrency_checks_agent_database_before_submitting(inputs, monkeypatch):
+    config_path, output = inputs
+    monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite+pysqlite:///{output.parent / 'missing.db'}")
+    with pytest.raises(RuntimeError, match="Cannot read Agent database before load"):
+        runner.main([
+            "--config", str(config_path), "--mode", "concurrency", "--task-id", "one",
+            "--output", str(output),
+        ])
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("fail_chat", [False, True])
@@ -66,7 +139,9 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
                 if fail_chat and payload["message"] == "first":
                     status, body = 503, {"detail": "busy"}
                 else:
-                    status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+                    execution_id = str(uuid4())
+                    finish_fake_run(execution_id)
+                    status, body = 202, {"execution_id": execution_id, "status": "QUEUED"}
             else:
                 status, body = 404, {}
             self.send_response(status)
@@ -75,10 +150,7 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
             self.wfile.write(json.dumps(body).encode())
 
         def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.200000+00:00"}')
+            raise AssertionError("load test must not poll the Agent API")
 
         def log_message(self, *_args):
             pass
@@ -117,8 +189,11 @@ def test_concurrency_uses_locust_and_keeps_runner_results(inputs, monkeypatch, c
     assert {payload["mock_mode"] for payload in received} == {"latency"}
     output_text = capsys.readouterr().out
     expected_successes = 2 if fail_chat else 4
-    assert f"Locust: 2 users, 4 executions, {expected_successes} succeeded" in output_text
-    assert "successful tasks/s" in output_text
+    assert f"Locust: 2 users, 4 executions, {expected_successes} completed" in output_text
+    assert f"{expected_successes} succeeded" in output_text
+    assert f"{expected_successes / 0.2:.2f} completed tasks/s" in output_text
+    assert f"success rate {expected_successes / 4:.1%}" in output_text
+    assert "E2E p95 200 ms" in output_text
     assert "HTTP req/s" not in output_text
     receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
     assert receipt["result_file"] == str(actual_output.resolve())
@@ -138,7 +213,9 @@ def test_duration_mode_cycles_cases_and_drains_started_flows(inputs):
                 status, body = 201, {"conversation_id": str(uuid4())}
             elif self.path == "/chat":
                 submitted.append(payload["idempotency_key"])
-                status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+                execution_id = str(uuid4())
+                finish_fake_run(execution_id, seconds=0.02)
+                status, body = 202, {"execution_id": execution_id, "status": "QUEUED"}
             else:
                 status, body = 404, {}
             self.send_response(status)
@@ -147,11 +224,7 @@ def test_duration_mode_cycles_cases_and_drains_started_flows(inputs):
             self.wfile.write(json.dumps(body).encode())
 
         def do_GET(self):
-            time.sleep(0.04)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.020000+00:00"}')
+            raise AssertionError("load test must not poll the Agent API")
 
         def log_message(self, *_args):
             pass
@@ -192,7 +265,9 @@ def test_runner_web_ui_shows_the_same_finite_workload(inputs):
             if self.path == "/conversations":
                 status, body = 201, {"conversation_id": str(uuid4())}
             elif self.path == "/chat":
-                status, body = 202, {"execution_id": str(uuid4()), "status": "QUEUED"}
+                execution_id = str(uuid4())
+                finish_fake_run(execution_id, seconds=0.02)
+                status, body = 202, {"execution_id": execution_id, "status": "QUEUED"}
             else:
                 status, body = 404, {}
             self.send_response(status)
@@ -201,10 +276,7 @@ def test_runner_web_ui_shows_the_same_finite_workload(inputs):
             self.wfile.write(json.dumps(body).encode())
 
         def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"SUCCEEDED","created_at":"2026-11-15T00:00:00+00:00","updated_at":"2026-11-15T00:00:00.020000+00:00"}')
+            raise AssertionError("load test must not poll the Agent API")
 
         def log_message(self, *_args):
             pass
@@ -240,6 +312,12 @@ def test_runner_web_ui_shows_the_same_finite_workload(inputs):
         response.raise_for_status()
         stats = response.json()["stats"]
         assert any(row["method"] == "FLOW" and row["name"] == "agent execution" and row["num_requests"] == 2 and row["avg_response_time"] == pytest.approx(20, abs=1) for row in stats)
+        summary = httpx.get(f"http://127.0.0.1:{web_port}/resolveai/results", timeout=3)
+        summary.raise_for_status()
+        assert all(label in summary.text for label in ("完成任务", "完成 TPS", "成功率", "E2E P95"))
+        assert "2" in summary.text
+        assert "100.0%" in summary.text
+        assert "20 ms" in summary.text
         assert process.poll() is None
         process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=10)

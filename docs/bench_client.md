@@ -104,22 +104,30 @@ Agent API 和 Worker 容器并执行 Agent 数据库迁移。
 
 `--run-mode duration` 按秒运行，`--duration` 必填。`--limit` 只限定循环使用的场景池，
 `--repeat` 在此模式下不限制任务数。指定数量的用户持续从池中轮流选题；到时不再
-开始新流程，已开始的流程完成后写出结果。因此总执行次数取决于实际吞吐率：
+开始新提交，已开始的提交结束后再汇总数据库中的任务结果。因此总提交次数取决于
+提交吞吐率：
 
 ```bash
 .venv/bin/python -m evals.runner --mode concurrency --run-mode duration --duration 60 --all --limit 5 --concurrency 20 --llm-backend mock --mock-mode fast --web-ui
 ```
 
-`executors/concurrency.py` 使用 Locust 虚拟用户按 `--concurrency` 控制同时执行的
-任务数；每次任务创建独立会话、提交 `/chat` 并等待终态。Count 模式按题目与重复
-次数的输入顺序返回状态和耗时；Duration 模式按领取顺序返回。runner 的结果 JSON
-格式不变。终端另外显示成功完成的任务数、每秒成功完成的任务数
-（成功任务数除以从启动虚拟用户到所有已开始流程结束的时间），以及完整执行流程的
-P95 耗时。失败或超时的任务不计入每秒成功完成任务数。Locust Web UI 仍按各
-HTTP 路由展示请求指标。成功或失败的终态任务使用 Agent API 返回的
-`updated_at - created_at` 计算 `total_seconds` 和 Locust 的 `FLOW agent execution`
-耗时，不包含客户端等待下一次轮询的时间；客户端请求失败或轮询超时仍使用本地
-经过时间。轮询间隔仍会影响虚拟用户何时领取下一题，因此可能限制吞吐率。
+`executors/concurrency.py` 使用 Locust 虚拟用户按 `--concurrency` 控制同时提交的
+任务数；每次任务只创建独立会话并提交 `/chat`，不请求 `/executions`。全部提交
+结束后，测试器使用 `.env` 中的 `AGENT_DATABASE_URL`，按本次返回的执行 ID 查询
+Agent 数据库，直到全部进入终态或达到 `wait_timeout`。`poll_interval` 只控制
+提交结束后数据库状态检查的间隔，不产生压测期间的 HTTP 轮询。使用本地 Compose
+时，PostgreSQL 通过 `127.0.0.1:${POSTGRES_PORT:-5432}` 提供给测试器；修改 Compose
+后需重新创建 PostgreSQL 容器以启用端口映射。
+
+Count 模式按题目与重复次数的输入顺序返回状态和耗时；Duration 模式按领取顺序
+返回。runner 的结果 JSON 格式不变。终端显示完成任务数、完成 TPS、成功任务数、
+成功率及 E2E P95。完成任务包括成功、失败、取消或超时等服务端终态；完成 TPS
+是终态任务数除以本次 AgentRun 最早 `created_at` 到最后 `finished_at` 的服务端
+时间跨度，不受结果检查间隔影响；成功率是成功任务数除以
+本次尝试提交的任务数。E2E P95 依据终态记录的 `finished_at - created_at`，
+不含测试器获知结果的延迟。未进入终态的任务标记为 `COMPLETION_TIMEOUT`，不计入完成数。
+Locust Web UI 仍按各 HTTP 路由展示请求指标；`FLOW agent execution` 在结果收集后
+写入，作为终态任务耗时的辅助视图。
 若系统时钟在任务中后退，负的服务端时间差记为 0，不将已成功任务误判为失败。
 Locust 在独立进程中运行，任务完成后自动退出，
 避免 gevent 补丁影响其他测评模式。此模式不计算任务正确率。
@@ -130,9 +138,12 @@ Locust 在独立进程中运行，任务完成后自动退出，
 .venv/bin/python -m evals.runner --mode concurrency --all --limit 3 --concurrency 3 --repeat 2 --web-ui
 ```
 
-打开 `http://127.0.0.1:8090`。runner 负责选题、启动和停止测试；不要在页面中
-重新启动或重置测试。测试完成后，runner 会先写出逐题 JSON 和运行摘要，再保持
-Web UI 开放；查看完毕在运行命令的终端按 Ctrl+C 关闭。端口可用 `--web-port`
+打开 `http://127.0.0.1:8090` 查看提交请求的实时曲线；打开
+`http://127.0.0.1:8090/resolveai/results` 查看完成任务数、完成 TPS、成功率和
+E2E P95。结果页在提交和结果收集期间自动刷新，完成后显示最终指标。runner
+负责选题、启动和停止测试；不要在页面中重新启动或重置测试。测试完成后，runner
+会先写出逐题 JSON 和运行摘要，再保持 Web UI 开放；查看完毕在运行命令的终端按
+Ctrl+C 关闭。端口可用 `--web-port`
 调整，例如 `--web-port 8091`。这个页面由本次 runner 的 Locust 进程提供，
 与 Docker 中 `8089` 的交互式 Locust 服务相互独立。若要在浏览器中持续随机选题
 施压，按[基础设施说明](../infra/README.md#locust-可视化压测)启动 Docker Web UI。

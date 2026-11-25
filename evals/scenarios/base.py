@@ -120,7 +120,11 @@ class Scenario:
 
     @property
     def required_client_env(self) -> tuple[str, ...]:
-        return ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY") if self.mode == "agent-task" else ("AGENT_INTERNAL_TOKEN",)
+        if self.mode == "agent-task":
+            return ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY")
+        if self.mode == "concurrency":
+            return ("AGENT_INTERNAL_TOKEN", "AGENT_DATABASE_URL")
+        return ("AGENT_INTERNAL_TOKEN",)
 
     @property
     def required_worker_env(self) -> tuple[str, ...]:
