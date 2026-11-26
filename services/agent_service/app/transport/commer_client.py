@@ -1,9 +1,10 @@
 """Commerce HTTP adapter for Agent tools.
 
-Create one client per authenticated user context. The user ID must come from
-the Agent execution context, not from an LLM-generated tool argument.
+Create one client per conversation. A customer identity may be bound from the
+execution context or resolved through an explicit Commerce lookup tool.
 """
 
+from collections.abc import Callable
 from typing import Any, Self, cast
 from urllib.parse import quote
 
@@ -28,17 +29,19 @@ class CommerceClient:
     def __init__(
         self,
         base_url: str,
-        user_id: str,
+        user_id: str | None,
         *,
         agent_token: str | None = None,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        on_identity_resolved: Callable[[str], None] | None = None,
     ) -> None:
         if not base_url.strip():
             raise ValueError("base_url must not be empty")
-        if not user_id.strip():
+        if user_id is not None and not user_id.strip():
             raise ValueError("user_id must not be empty")
-        self.user_id = user_id
+        self._user_id = user_id
+        self._on_identity_resolved = on_identity_resolved
         self.agent_token = agent_token
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"), timeout=timeout, transport=transport
@@ -56,6 +59,46 @@ class CommerceClient:
     @staticmethod
     def _path_id(value: str) -> str:
         return quote(value, safe="")
+
+    @property
+    def user_id(self) -> str:
+        if self._user_id is None:
+            raise CommerceClientError(
+                "identity_required", "Find the customer by email or name and ZIP first", retryable=False
+            )
+        return self._user_id
+
+    def _bind_identity(self, user_id: str) -> None:
+        if self._user_id is not None and self._user_id != user_id:
+            raise CommerceClientError(
+                "identity_conflict", "This conversation belongs to another customer", retryable=False
+            )
+        if self._on_identity_resolved is not None:
+            self._on_identity_resolved(user_id)
+        self._user_id = user_id
+
+    async def find_user_id_by_email(self, email: str) -> dict[str, str]:
+        if not self.agent_token:
+            raise RuntimeError("Agent token is required for customer lookup")
+        result = cast(dict[str, str], await self._request(
+            "GET", "/customers/lookup/by-email", params={"email": email},
+            headers={"X-Agent-Token": self.agent_token},
+        ))
+        self._bind_identity(result["user_id"])
+        return result
+
+    async def find_user_id_by_name_zip(
+        self, first_name: str, last_name: str, zip: str
+    ) -> dict[str, str]:
+        if not self.agent_token:
+            raise RuntimeError("Agent token is required for customer lookup")
+        result = cast(dict[str, str], await self._request(
+            "GET", "/customers/lookup/by-name-zip",
+            params={"first_name": first_name, "last_name": last_name, "zip": zip},
+            headers={"X-Agent-Token": self.agent_token},
+        ))
+        self._bind_identity(result["user_id"])
+        return result
 
     async def _request(
         self,

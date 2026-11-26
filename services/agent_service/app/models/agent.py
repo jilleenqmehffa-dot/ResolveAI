@@ -80,6 +80,7 @@ class Conversation(Base):
         PG_UUID(as_uuid=True), primary_key=True, default=uuid4
     )
     customer_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    verified_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[ConversationStatus] = mapped_column(
         db_enum(ConversationStatus, "agent_conversation_status"),
         nullable=False,

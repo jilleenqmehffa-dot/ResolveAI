@@ -75,7 +75,7 @@ def execute(scenario: Scenario, token: str) -> list[NetworkFaultResult]:
     if scenario.mode != "network-fault":
         raise ValueError("network-fault executor requires a network-fault scenario")
     prepared_cases = [
-        map_task(task, scenario.inputs.database) for task in scenario.inputs.tasks
+        map_task(task, scenario.inputs.customer_oracle) for task in scenario.inputs.tasks
     ]
     with fault_environment(scenario):
         return asyncio.run(execute_async(scenario, prepared_cases, token))

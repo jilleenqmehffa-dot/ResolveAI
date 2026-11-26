@@ -99,6 +99,8 @@ async def test_graph_prepares_context_runs_tool_then_returns_to_agent() -> None:
         result = await graph.ainvoke(initial_state())
 
     assert model.bound_tool_names == [
+        "find_user_id_by_email",
+        "find_user_id_by_name_zip",
         "list_products",
         "get_product",
         "get_item",

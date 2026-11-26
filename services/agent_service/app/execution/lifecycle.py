@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -32,6 +33,12 @@ class IdempotencyBackendConflict(ValueError):
     """The same idempotency key cannot select two different model backends."""
 
 
+def eval_run_id_from_key(idempotency_key: str | None) -> str | None:
+    """Recover the task correlation ID persisted in simulated-user run keys."""
+    match = re.fullmatch(r"user-sim:([0-9a-f]{32}):\d+", idempotency_key or "")
+    return match.group(1) if match else None
+
+
 @dataclass(frozen=True, slots=True)
 class ClaimedRun:
     run_id: UUID
@@ -46,6 +53,7 @@ class ClaimedRun:
     created_at: datetime
     deadline_at: datetime
     resumed: bool
+    eval_run_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +233,7 @@ def claim_run(
             created_at=run.created_at,
             deadline_at=run.deadline_at,
             resumed=recovered or run.attempt_count > 1,
+            eval_run_id=eval_run_id_from_key(run.idempotency_key),
         )
 
 

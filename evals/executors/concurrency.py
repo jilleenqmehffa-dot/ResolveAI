@@ -30,7 +30,7 @@ def make_workload(scenario: Scenario) -> dict:
     config = scenario.inputs.config
     workload = {
         "host": config["agent_base_url"],
-        "cases": [asdict(map_task(task, scenario.inputs.database)) for task in scenario.inputs.tasks],
+        "cases": [asdict(map_task(task, scenario.inputs.customer_oracle)) for task in scenario.inputs.tasks],
         "concurrency": scenario.concurrency,
         "repeat": scenario.repeat,
         "run_mode": scenario.run_mode,
@@ -300,7 +300,7 @@ def run_locust(workload: dict, token: str, *, web_port: int | None = None,
                 except Empty:
                     raise StopUser() from None
             result = Result(case["task_id"], case["customer_id"], repetition)
-            headers = {"X-Agent-Token": token, "X-Customer-ID": case["customer_id"]}
+            headers = {"X-Agent-Token": token, "X-Customer-ID": f"eval-anon:{uuid4().hex}"}
             started = time.monotonic()
             try:
                 conversation = self.request_json(

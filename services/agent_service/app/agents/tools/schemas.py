@@ -13,6 +13,16 @@ class EmptyToolArgs(ToolArgs):
     """Input for read tools that require no model-generated arguments."""
 
 
+class FindCustomerByEmailArgs(ToolArgs):
+    email: str = Field(min_length=3, description="Email address supplied by the customer")
+
+
+class FindCustomerByNameZipArgs(ToolArgs):
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
+    zip: str = Field(min_length=1)
+
+
 class GetProductArgs(ToolArgs):
     """Identify the product whose variants should be listed."""
 

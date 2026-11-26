@@ -12,6 +12,32 @@ from services.agent_service.app.transport.commer_client import (
 
 
 @pytest.mark.asyncio
+async def test_anonymous_client_requires_model_lookup_before_customer_access() -> None:
+    requests: list[str] = []
+    bound: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path == "/customers/lookup/by-email":
+            assert request.url.params["email"] == "mia@example.com"
+            assert request.headers["x-agent-token"] == "test-agent-token"
+            return httpx.Response(200, json={"user_id": "mia"})
+        return httpx.Response(200, json={"user_id": "mia"})
+
+    async with CommerceClient(
+        "http://commerce.test", None, agent_token="test-agent-token",
+        transport=httpx.MockTransport(respond), on_identity_resolved=bound.append,
+    ) as client:
+        with pytest.raises(CommerceClientError, match="Find the customer"):
+            await client.get_customer()
+        assert requests == []
+        assert await client.find_user_id_by_email("mia@example.com") == {"user_id": "mia"}
+        assert await client.get_customer() == {"user_id": "mia"}
+        assert bound == ["mia"]
+    assert requests == ["/customers/lookup/by-email", "/customers/mia"]
+
+
+@pytest.mark.asyncio
 async def test_read_operations_use_commerce_routes_and_current_user() -> None:
     requests: list[tuple[str, str, str | None]] = []
 

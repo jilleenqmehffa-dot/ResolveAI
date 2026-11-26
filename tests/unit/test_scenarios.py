@@ -21,7 +21,7 @@ def test_default_scenarios_load_pinned_test_split(
 ) -> None:
     assert runner.main(["--mode", mode, "--all", "--limit", "1", "--dry-run"]) == 0
     preview = json.loads(capsys.readouterr().out)
-    assert preview["dataset_version"] == "retail-bench-v1"
+    assert preview["dataset_version"] == "retail-bench-v2"
     assert preview["split"] == "test"
     assert preview["task_ids"] == ["5"]
     assert preview["llm_backend"] == backend

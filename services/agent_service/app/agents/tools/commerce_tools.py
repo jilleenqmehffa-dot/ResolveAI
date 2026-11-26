@@ -9,6 +9,8 @@ from services.agent_service.app.agents.tools.schemas import (
     CancelOrderArgs,
     ChangeOrderPaymentArgs,
     EmptyToolArgs,
+    FindCustomerByEmailArgs,
+    FindCustomerByNameZipArgs,
     GetAfterSalesCaseArgs,
     GetItemArgs,
     GetOrderArgs,
@@ -26,6 +28,18 @@ def create_commerce_tools(client: CommerceClient) -> list[BaseTool]:
     The caller owns the client's lifecycle. CommerceClientError is propagated so
     the graph's tool executor can apply its retry and failure policy.
     """
+
+    @tool(args_schema=FindCustomerByEmailArgs)
+    async def find_user_id_by_email(email: str) -> dict[str, str]:
+        """Find the current customer ID using an email the customer provided."""
+        return await client.find_user_id_by_email(email)
+
+    @tool(args_schema=FindCustomerByNameZipArgs)
+    async def find_user_id_by_name_zip(
+        first_name: str, last_name: str, zip: str
+    ) -> dict[str, str]:
+        """Find the current customer ID using their name and ZIP code."""
+        return await client.find_user_id_by_name_zip(first_name, last_name, zip)
 
     @tool(args_schema=EmptyToolArgs)
     async def list_products() -> list[dict[str, Any]]:
@@ -165,6 +179,8 @@ def create_commerce_tools(client: CommerceClient) -> list[BaseTool]:
         return await client.mark_after_sales_refunded(case_id)
 
     return [
+        find_user_id_by_email,
+        find_user_id_by_name_zip,
         list_products,
         get_product,
         get_item,

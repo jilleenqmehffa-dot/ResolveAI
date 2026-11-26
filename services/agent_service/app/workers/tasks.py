@@ -36,6 +36,7 @@ from services.agent_service.app.execution.tool_invocations import ToolInvocation
 from services.agent_service.app.models.agent import (
     AgentRun,
     AgentRunStatus,
+    Conversation,
     Message,
     MessageRole,
 )
@@ -69,6 +70,16 @@ def _policy() -> RecoveryPolicy:
         base_retry_delay_seconds=settings.agent_retry_base_seconds,
         max_retry_delay_seconds=settings.agent_retry_max_seconds,
     )
+
+
+def _eval_trace_metadata(claim: ClaimedRun) -> dict[str, str] | None:
+    if claim.eval_run_id is None:
+        return None
+    return {
+        "eval_run_id": claim.eval_run_id,
+        "agent_run_id": str(claim.run_id),
+        "execution_id": str(claim.run_id),
+    }
 
 
 def _conversation_history(
@@ -144,16 +155,38 @@ async def _execute_graph(
     if claim.resumed:
         await store.recover_interrupted_invocations()
     config = checkpoint_config(claim.run_id)
+    metadata = _eval_trace_metadata(claim)
+    if metadata is not None:
+        config["metadata"] = metadata
     config["configurable"].update(
         {"execution_manager": manager, "tool_invocations": store}
     )
     commerce_url = get_settings().commerce_base_url
+    anonymous_eval = claim.customer_id.startswith("eval-anon:")
+    verified_customer_id: str | None = claim.customer_id
+    if anonymous_eval:
+        with sessions() as session:
+            conversation = session.get(Conversation, claim.conversation_id)
+            if conversation is None:
+                raise RuntimeError("conversation is missing")
+            verified_customer_id = conversation.verified_customer_id
+
+    def bind_identity(user_id: str) -> None:
+        with sessions() as session, session.begin():
+            conversation = session.get(Conversation, claim.conversation_id, with_for_update=True)
+            if conversation is None or conversation.customer_id != claim.customer_id:
+                raise RuntimeError("conversation identity changed")
+            if conversation.verified_customer_id not in (None, user_id):
+                raise ValueError("conversation was verified for another customer")
+            conversation.verified_customer_id = user_id
+
     async with (
         open_checkpointer() as saver,
         CommerceClient(
             commerce_url,
-            claim.customer_id,
+            verified_customer_id,
             agent_token=get_settings().agent_internal_token,
+            on_identity_resolved=bind_identity if anonymous_eval else None,
         ) as client,
     ):
 

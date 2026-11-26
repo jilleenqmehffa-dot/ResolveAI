@@ -14,6 +14,13 @@
     "classification": "internal",
     "consumers": ["benchmark runner"]
   },
+  "task_customers": {
+    "source": "evals/scenarios/agent_task/datasets/task_customers.json",
+    "owner": "Evaluation",
+    "description": "Private customer IDs for snapshot scoring; never sent to the Agent",
+    "classification": "restricted",
+    "consumers": ["benchmark evaluator"]
+  },
   "splits": {
     "source": "evals/scenarios/agent_task/datasets/split_tasks.json",
     "owner": "Evaluation",

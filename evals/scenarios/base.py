@@ -13,7 +13,7 @@ import yaml
 from dotenv import dotenv_values
 
 from data_platform.core import manifest, source_path, validate_sources
-from evals.clients.benchmark_client import BenchCase, _customer_id
+from evals.clients.benchmark_client import BenchCase
 
 
 def load_tasks(path: Path) -> list[dict[str, Any]]:
@@ -40,14 +40,23 @@ def select_split(
     return selected
 
 
-def map_task(task: dict[str, Any], database: dict[str, Any]) -> BenchCase:
+def map_task(task: dict[str, Any], customer_oracle: dict[str, str]) -> BenchCase:
     if "customer_id" in task and "message" in task:
         return BenchCase(str(task["id"]), str(task["customer_id"]), str(task["message"]))
     instructions = task["user_scenario"]["instructions"]
     known = instructions["known_info"].strip()
     reason = instructions["reason_for_call"].strip()
-    customer_id = _customer_id(known, reason, database["users"], database["orders"])
+    customer_id = resolve_customer_id(task, customer_oracle)
     return BenchCase(str(task["id"]), customer_id, f"{known}\n\n{reason}")
+
+
+def resolve_customer_id(task: dict[str, Any], customer_oracle: dict[str, str]) -> str:
+    """Read private evaluator metadata; never infer identity from scenario prose."""
+    task_id = str(task["id"])
+    customer_id = customer_oracle.get(task_id)
+    if not customer_id:
+        raise ValueError(f"task {task_id}: missing private customer oracle")
+    return customer_id
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,7 @@ class LoadedInputs:
     database_path: Path
     tasks: list[dict[str, Any]]
     database: dict[str, Any]
+    customer_oracle: dict[str, str]
     split: str | None
     dataset_version: str | None
 
@@ -95,8 +105,24 @@ def load_inputs(args: Namespace, default_config: Path) -> LoadedInputs:
     if not tasks:
         raise ValueError("no tasks selected")
     database = json.loads(database_path.read_text(encoding="utf-8"))
+    oracle_source = config.get("customer_oracle")
+    if oracle_source is None and task_path.resolve() == source_path("tasks").resolve():
+        oracle_source = source_path("task_customers")
+    if oracle_source is None and args.mode == "agent-task":
+        raise ValueError("custom agent tasks require customer_oracle in the scenario config")
+    customer_oracle = (
+        json.loads(Path(oracle_source).read_text(encoding="utf-8"))
+        if oracle_source is not None else {}
+    )
+    if not isinstance(customer_oracle, dict):
+        raise TypeError("customer oracle must be a JSON object")
+    if args.mode == "agent-task":
+        for task in tasks:
+            customer_id = resolve_customer_id(task, customer_oracle)
+            if customer_id not in database["users"]:
+                raise ValueError(f"task {task['id']}: customer oracle ID is absent from database")
     return LoadedInputs(
-        config_path, config, task_path, database_path, tasks, database, split,
+        config_path, config, task_path, database_path, tasks, database, customer_oracle, split,
         manifest()["version"] if pinned else None,
     )
 
@@ -121,7 +147,7 @@ class Scenario:
     @property
     def required_client_env(self) -> tuple[str, ...]:
         if self.mode == "agent-task":
-            return ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY")
+            return ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY", "USER_SIMULATOR_API_KEY")
         if self.mode == "concurrency":
             return ("AGENT_INTERNAL_TOKEN", "AGENT_DATABASE_URL")
         return ("AGENT_INTERNAL_TOKEN",)

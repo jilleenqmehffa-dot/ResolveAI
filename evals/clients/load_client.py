@@ -41,7 +41,7 @@ async def submit_case(
     mock_mode: str = "fast",
 ) -> Result:
     result = Result(case.task_id, case.customer_id, repetition)
-    headers = {"X-Agent-Token": token, "X-Customer-ID": case.customer_id}
+    headers = {"X-Agent-Token": token, "X-Customer-ID": f"eval-anon:{uuid4().hex}"}
     started = time.monotonic()
     try:
         response = await client.post("/conversations", headers=headers)

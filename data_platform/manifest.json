@@ -1,8 +1,17 @@
 {
-  "version": "retail-bench-v1",
+  "version": "retail-bench-v2",
   "sources": {
-    "retail": {"sha256": "413a65160adbdb5fde0ffc0015c49b6d70250b10c18128de169b597af7766765"},
-    "tasks": {"sha256": "f73b1a044f4100d8766d5fbafa0dda8bd05357ce41dbb5219a398d9883c92fb2"},
-    "splits": {"sha256": "ed0580ec52575b63fbf76568af42490da6ee7783ecb4aa81af46961291358f20"}
+    "retail": {
+      "sha256": "413a65160adbdb5fde0ffc0015c49b6d70250b10c18128de169b597af7766765"
+    },
+    "tasks": {
+      "sha256": "f73b1a044f4100d8766d5fbafa0dda8bd05357ce41dbb5219a398d9883c92fb2"
+    },
+    "task_customers": {
+      "sha256": "ef5dae84c071559874f98a15da7fc9ddc21746182c9681374f25e279bfa7a5f8"
+    },
+    "splits": {
+      "sha256": "ed0580ec52575b63fbf76568af42490da6ee7783ecb4aa81af46961291358f20"
+    }
   }
 }

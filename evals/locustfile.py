@@ -57,7 +57,7 @@ class AgentUser(HttpUser):
     @task
     def run_agent_task(self) -> None:
         case = random.choice(CASES)
-        headers = {"X-Agent-Token": TOKEN, "X-Customer-ID": case.customer_id}
+        headers = {"X-Agent-Token": TOKEN, "X-Customer-ID": f"eval-anon:{uuid4().hex}"}
         started = time.monotonic()
         error = None
         flow_seconds = None

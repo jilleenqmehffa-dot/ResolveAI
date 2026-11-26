@@ -71,5 +71,7 @@ def test_concurrent_submission_uses_separate_conversations_and_keys(monkeypatch)
     assert all(result.status == "QUEUED" and result.execution_id for result in results)
     assert len({result.conversation_id for result in results}) == 4
     assert len(seen_keys) == 4
-    assert seen_customers == {"user-one", "user-two"}
+    assert len(seen_customers) == 4
+    assert all(customer.startswith("eval-anon:") for customer in seen_customers)
+    assert seen_customers.isdisjoint({"user-one", "user-two"})
     assert peak == 2

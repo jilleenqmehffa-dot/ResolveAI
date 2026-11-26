@@ -110,6 +110,12 @@ def validate_sources(*, verify_manifest: bool = True) -> dict[str, Any]:
     sources = {name: source_path(name) for name in catalog()}
     data = {name: json.loads(path.read_text(encoding="utf-8")) for name, path in sources.items()}
     errors = quality_errors(data["retail"], data["tasks"], data["splits"])
+    customers = data["task_customers"]
+    task_ids = {str(task["id"]) for task in data["tasks"]}
+    if not isinstance(customers, dict) or set(customers) != task_ids:
+        errors.append("task customer oracle must contain exactly one entry for every task")
+    elif any(customer_id not in data["retail"]["users"] for customer_id in customers.values()):
+        errors.append("task customer oracle contains an unknown customer")
     if verify_manifest:
         pinned = manifest()["sources"]
         for name, path in sources.items():

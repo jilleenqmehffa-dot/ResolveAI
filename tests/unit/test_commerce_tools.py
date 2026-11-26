@@ -10,6 +10,8 @@ from services.agent_service.app.agents.tools.schemas import (
     CancelOrderArgs,
     ChangeOrderPaymentArgs,
     EmptyToolArgs,
+    FindCustomerByEmailArgs,
+    FindCustomerByNameZipArgs,
     GetAfterSalesCaseArgs,
     GetItemArgs,
     GetOrderArgs,
@@ -59,6 +61,8 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
     ) as client:
         tools = {item.name: item for item in create_commerce_tools(client)}
         assert set(tools) == {
+            "find_user_id_by_email",
+            "find_user_id_by_name_zip",
             "list_products",
             "get_product",
             "get_item",
@@ -79,6 +83,8 @@ async def test_tools_call_commerce_and_keep_user_id_out_of_tool_arguments() -> N
         assert tools["list_orders"].args == {}
         assert set(tools["get_order"].args) == {"order_id"}
         assert {name: item.args_schema for name, item in tools.items()} == {
+            "find_user_id_by_email": FindCustomerByEmailArgs,
+            "find_user_id_by_name_zip": FindCustomerByNameZipArgs,
             "list_products": EmptyToolArgs,
             "get_product": GetProductArgs,
             "get_item": GetItemArgs,

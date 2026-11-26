@@ -64,7 +64,7 @@ def test_ingest_records_versioned_receipt(tmp_path, monkeypatch) -> None:
     assert platform_main(["ingest", "--database-url", url]) == 0
     receipts = list_ingestions()
     assert len(receipts) == 1
-    assert receipts[0]["dataset_version"] == "retail-bench-v1"
+    assert receipts[0]["dataset_version"] == "retail-bench-v2"
     assert receipts[0]["counts"]["orders"] == 1000
     assert receipts[0]["database"] == str(path)
 
@@ -81,7 +81,7 @@ def test_run_registry_and_api_are_read_only_and_authenticated(tmp_path, monkeypa
     client = TestClient(app)
     assert client.get("/datasets").status_code == 401
     headers = {"X-Agent-Token": "test-token"}
-    assert client.get("/datasets", headers=headers).json()["version"] == "retail-bench-v1"
+    assert client.get("/datasets", headers=headers).json()["version"] == "retail-bench-v2"
     assert len(client.get("/runs", headers=headers).json()) == 2
     comparison = client.get(f"/runs/compare?left={first['run_id']}&right={second['run_id']}", headers=headers).json()
     assert comparison["same_dataset"]

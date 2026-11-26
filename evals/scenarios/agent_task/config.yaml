@@ -2,6 +2,7 @@ tasks: evals/scenarios/agent_task/datasets/tasks.json
 split_file: evals/scenarios/agent_task/datasets/split_tasks.json
 split: test
 database: evals/scenarios/agent_task/datasets/db.json
+customer_oracle: evals/scenarios/agent_task/datasets/task_customers.json
 env_file: .env
 agent_base_url: http://127.0.0.1:8000
 commerce_base_url: http://127.0.0.1:8001
