@@ -372,7 +372,10 @@ class TaskSuccessEvaluator:
         )
 
         facts = task["evaluation_criteria"].get("communicate_info") or []
-        answer = record.trace.final_answer or ""
+        answer = (
+            "\n".join(content for role, content in record.history if role == "agent")
+            if record.history else record.trace.final_answer or ""
+        )
         numbers = _number_values(answer)
         nl_checks = tuple(
             Check(

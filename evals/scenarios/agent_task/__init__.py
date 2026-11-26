@@ -25,6 +25,8 @@ def prepare(args: Namespace) -> Scenario:
     if repeat != 1:
         raise ValueError("agent-task mode does not repeat tasks")
     concurrency = args.concurrency or int(config.get("concurrency", 1))
+    if concurrency != 1:
+        raise ValueError("agent-task database restoration requires concurrency=1")
     rebuild = args.rebuild_each_task or bool(config.get("rebuild_each_task", False))
     database_url = None
     if rebuild:

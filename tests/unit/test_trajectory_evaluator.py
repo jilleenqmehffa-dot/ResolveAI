@@ -39,7 +39,7 @@ def test_supported_actions_match_semantically_and_unsupported_are_reported() -> 
                 {
                     "action_id": "a1",
                     "name": "find_user_id_by_name_zip",
-                    "arguments": {},
+                    "arguments": {"first_name": "Sam", "last_name": "Lee", "zip": "12345"},
                 },
                 {
                     "action_id": "a2",
@@ -56,15 +56,16 @@ def test_supported_actions_match_semantically_and_unsupported_are_reported() -> 
     }
     observed = record(
         (
+            call("r0", "find_user_id_by_name_zip", {"first_name": "Sam", "last_name": "Lee", "zip": "12345"}),
             call("r1", "get_order", {"order_id": "o1"}),
             call("r2", "cancel_pending_order", {"order_id": "o1", "reason": "done"}),
         )
     )
     result = TrajectoryEvaluator().evaluate(observed, task)
     assert result.score == 1.0
-    assert result.supported_actions == 2
-    assert result.unsupported_actions == ("a1",)
-    assert [match.matched_run_id for match in result.matches] == ["r1", "r2"]
+    assert result.supported_actions == 3
+    assert result.unsupported_actions == ()
+    assert [match.matched_run_id for match in result.matches] == ["r0", "r1", "r2"]
 
 
 def test_missing_action_and_extra_write_reduce_score() -> None:

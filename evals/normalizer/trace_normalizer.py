@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from evals.adapter.trace_adapter import AgentTrace, TraceRun
+from evals.adapter.trace_adapter import AgentTrace, TraceAdapter, TraceRun
 from evals.normalizer.common import (
     decode_json,
     normalize_after_sales_case,
@@ -119,7 +119,7 @@ def _answer(value: Any) -> str | None:
     return None
 
 
-def _tool_call(trace_id: str, run: TraceRun) -> NormalizedToolCall:
+def _tool_call(trace_id: str, agent_run_id: str, run: TraceRun) -> NormalizedToolCall:
     args = _arguments(run.inputs)
     result = _unwrap(run.outputs)
     error: Any = run.error
@@ -140,6 +140,7 @@ def _tool_call(trace_id: str, run: TraceRun) -> NormalizedToolCall:
         error=error,
         raw_inputs=run.inputs,
         raw_outputs=run.outputs,
+        agent_run_id=agent_run_id,
     )
 
 
@@ -160,11 +161,30 @@ def _guard(run: TraceRun) -> GuardDecision | None:
 
 class TraceNormalizer:
     def normalize(self, traces: Sequence[AgentTrace]) -> NormalizedTrace:
+        return self._normalize(traces)
+
+    def normalize_eval_run(
+        self, eval_run_id: str, agent_run_ids: Sequence[str], *,
+        adapter: TraceAdapter | None = None, timeout: float = 30.0,
+    ) -> NormalizedTrace:
+        """Fetch and combine every Agent turn from one evaluation task."""
+        adapter = adapter or TraceAdapter()
+        traces = adapter.wait_for_eval_traces(
+            eval_run_id, list(agent_run_ids), timeout=timeout,
+        )
+        return self._normalize(traces, eval_run_id=eval_run_id, agent_run_ids=tuple(agent_run_ids))
+
+    def _normalize(
+        self, traces: Sequence[AgentTrace], *,
+        eval_run_id: str | None = None, agent_run_ids: tuple[str, ...] = (),
+    ) -> NormalizedTrace:
         if not traces:
             raise ValueError("At least one Agent trace is required")
-        execution_id = traces[0].execution_id
-        if any(trace.execution_id != execution_id for trace in traces):
+        execution_id = agent_run_ids[0] if agent_run_ids else traces[0].execution_id
+        if eval_run_id is None and any(trace.execution_id != execution_id for trace in traces):
             raise ValueError("Traces belong to different Agent executions")
+        if eval_run_id is not None and {trace.execution_id for trace in traces} != set(agent_run_ids):
+            raise ValueError("Evaluation traces do not match expected Agent runs")
 
         tool_calls: list[tuple[Any, NormalizedToolCall]] = []
         decisions: list[tuple[Any, GuardDecision]] = []
@@ -194,7 +214,7 @@ class TraceNormalizer:
                     )
                 )
                 if run.run_type == "tool":
-                    tool_call = _tool_call(trace.trace_id, run)
+                    tool_call = _tool_call(trace.trace_id, trace.execution_id, run)
                     tool_calls.append((run.start_time, tool_call))
                     if tool_call.error is not None and not run.error:
                         errors.append(str(tool_call.error))
@@ -222,4 +242,6 @@ class TraceNormalizer:
             errors=tuple(errors),
             root_run_ids=tuple(trace.root_run_id for trace in traces),
             runs=tuple(runs),
+            eval_run_id=eval_run_id,
+            agent_run_ids=agent_run_ids or (execution_id,),
         )

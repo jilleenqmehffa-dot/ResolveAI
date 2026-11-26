@@ -19,6 +19,7 @@ class NormalizedToolCall:
     error: Any
     raw_inputs: dict[str, Any]
     raw_outputs: dict[str, Any] | None
+    agent_run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ class NormalizedTrace:
     errors: tuple[str, ...]
     root_run_ids: tuple[str, ...] = ()
     runs: tuple[NormalizedRun, ...] = ()
+    eval_run_id: str | None = None
+    agent_run_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -85,10 +88,17 @@ class EvalRecord:
     trace: NormalizedTrace
     commerce: NormalizedCommerce
     commerce_before: NormalizedCommerce | None = None
+    eval_run_id: str | None = None
+    agent_run_ids: tuple[str, ...] = ()
+    history: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.execution_id != self.trace.execution_id:
             raise ValueError("Trace execution ID does not match EvalRecord")
+        if self.eval_run_id is not None and self.eval_run_id != self.trace.eval_run_id:
+            raise ValueError("Trace eval_run_id does not match EvalRecord")
+        if self.agent_run_ids and self.agent_run_ids != self.trace.agent_run_ids:
+            raise ValueError("Trace Agent run IDs do not match EvalRecord")
         if self.task_id != self.commerce.task_id:
             raise ValueError("Commerce task ID does not match EvalRecord")
         if self.customer_id != self.commerce.customer_id:

@@ -10,6 +10,8 @@ from evals.evaluation.task_success import WRITE_ACTIONS
 from evals.normalizer.models import EvalRecord, NormalizedToolCall
 
 TOOL_NAMES = {
+    "find_user_id_by_email": "find_user_id_by_email",
+    "find_user_id_by_name_zip": "find_user_id_by_name_zip",
     "get_order_details": "get_order",
     "get_product_details": "get_product",
     "get_item_details": "get_item",
@@ -72,7 +74,7 @@ def _logical_calls(calls: tuple[NormalizedToolCall, ...]) -> list[NormalizedTool
     """Collapse repeated trace runs for one durable tool call ID."""
     grouped: dict[str, NormalizedToolCall] = {}
     for call in calls:
-        key = call.tool_call_id or call.run_id
+        key = f"{call.agent_run_id}:{call.tool_call_id}" if call.agent_run_id and call.tool_call_id else call.tool_call_id or call.run_id
         previous = grouped.get(key)
         if previous is None or previous.error is not None and call.error is None:
             grouped[key] = call

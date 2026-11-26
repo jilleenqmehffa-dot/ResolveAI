@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
+from evals.adapter.commerce_adapter import CommerceSnapshot
+from evals.adapter.trace_adapter import AgentTrace, TraceAdapter
 from evals.evaluation.task_success import TaskSuccessEvaluator
 from evals.evaluation.trajectory import TrajectoryEvaluator
-from evals.executors.agent_task import AgentExecution
+from evals.executors.user_simulate.orchestrator import OrchestrationResult, State
 from evals.normalizer.commerce_normalizer import CommerceNormalizer
 from evals.normalizer.models import EvalRecord
 from evals.normalizer.trace_normalizer import TraceNormalizer
+
+
+@dataclass
+class AgentExecution:
+    """One task's observations before any scoring or normalization."""
+
+    task: dict[str, Any]
+    task_id: str
+    customer_id: str | None = None
+    execution_id: str | None = None
+    status: str = "ERROR"
+    before: CommerceSnapshot | None = None
+    after: CommerceSnapshot | None = None
+    traces: list[AgentTrace] | None = None
+    error: dict[str, str] | None = None
+    eval_run_id: str | None = None
+    execution_ids: tuple[str, ...] = ()
+    history: tuple[tuple[str, str], ...] = ()
 
 
 def reasons(success: Any, trajectory: Any) -> list[str]:
@@ -24,11 +44,17 @@ def reasons(success: Any, trajectory: Any) -> list[str]:
     return details or ["all evaluated checks passed"]
 
 
-def evaluate(observed: AgentExecution) -> dict[str, Any]:
+def evaluate(
+    observed: AgentExecution, *, trace_adapter: TraceAdapter | None = None,
+    trace_timeout: float = 30.0,
+) -> dict[str, Any]:
     row: dict[str, Any] = {
         "task_id": observed.task_id,
         "customer_id": observed.customer_id,
         "execution_id": observed.execution_id,
+        "eval_run_id": observed.eval_run_id,
+        "execution_ids": list(observed.execution_ids),
+        "history": list(observed.history),
         "status": observed.status,
         "scores": None,
         "reasons": [],
@@ -40,16 +66,28 @@ def evaluate(observed: AgentExecution) -> dict[str, Any]:
     try:
         if not observed.customer_id or not observed.execution_id:
             raise ValueError("Agent execution is missing identity or execution ID")
-        if observed.before is None or observed.after is None or not observed.traces:
-            raise ValueError("Agent execution is missing snapshots or traces")
+        if observed.before is None or observed.after is None:
+            raise ValueError("Agent execution is missing Commerce snapshots")
+        if observed.eval_run_id:
+            trace = TraceNormalizer().normalize_eval_run(
+                observed.eval_run_id, observed.execution_ids,
+                adapter=trace_adapter, timeout=trace_timeout,
+            )
+        else:
+            if not observed.traces:
+                raise ValueError("Agent execution is missing traces")
+            trace = TraceNormalizer().normalize(observed.traces)
         normalizer = CommerceNormalizer()
         record = EvalRecord(
             task_id=observed.task_id,
             customer_id=observed.customer_id,
             execution_id=observed.execution_id,
-            trace=TraceNormalizer().normalize(observed.traces),
+            trace=trace,
             commerce=normalizer.normalize(observed.after),
             commerce_before=normalizer.normalize(observed.before),
+            eval_run_id=observed.eval_run_id,
+            agent_run_ids=observed.execution_ids,
+            history=observed.history,
         )
         success = TaskSuccessEvaluator().evaluate(record, observed.task)
         trajectory = TrajectoryEvaluator().evaluate(record, observed.task)
@@ -60,3 +98,23 @@ def evaluate(observed: AgentExecution) -> dict[str, Any]:
         row["error"] = {"type": type(exc).__name__, "message": str(exc)}
         row["reasons"] = [str(exc)]
     return row
+
+
+def evaluate_orchestration(
+    result: OrchestrationResult, task: dict[str, Any],
+    before: CommerceSnapshot | None, after: CommerceSnapshot | None,
+    *, customer_id: str, trace_adapter: TraceAdapter | None = None, trace_timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Score one full simulated-user task after the runner captures Commerce state."""
+    observed = AgentExecution(
+        task=task, task_id=result.task_id, customer_id=customer_id,
+        execution_id=result.execution_ids[0] if result.execution_ids else None,
+        status=result.state.value, before=before, after=after,
+        eval_run_id=result.eval_run_id,
+        execution_ids=tuple(result.execution_ids), history=tuple(result.history),
+        error=(
+            {"type": result.state.value, "message": "; ".join(result.errors)}
+            if result.state in {State.ERROR, State.TIMEOUT} else None
+        ),
+    )
+    return evaluate(observed, trace_adapter=trace_adapter, trace_timeout=trace_timeout)

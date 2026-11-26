@@ -141,3 +141,59 @@ class TraceAdapter:
             if traces or monotonic() >= deadline:
                 return traces
             sleep(min(poll_interval, deadline - monotonic()))
+
+    def list_eval_traces(self, eval_run_id: str | UUID) -> list[AgentTrace]:
+        """Return all Agent trace trees tagged with one evaluation run ID."""
+        eval_run_id = UUID(str(eval_run_id)).hex
+        roots = self.client.list_runs(
+            project_name=self.project,
+            is_root=True,
+            filter=(
+                'and(eq(metadata_key, "eval_run_id"), '
+                f'eq(metadata_value, "{eval_run_id}"))'
+            ),
+        )
+        traces: list[tuple[datetime, AgentTrace]] = []
+        for root in roots:
+            metadata = (root.extra or {}).get("metadata") or {}
+            if metadata.get("eval_run_id") != eval_run_id:
+                raise ValueError(f"Trace {root.id} has a conflicting eval_run_id")
+            agent_run_id = metadata.get("agent_run_id")
+            if not agent_run_id:
+                raise ValueError(f"Trace {root.id} has eval_run_id but no agent_run_id")
+            agent_run_id = str(UUID(str(agent_run_id)))
+            if metadata.get("execution_id") and str(UUID(str(metadata["execution_id"]))) != agent_run_id:
+                raise ValueError(f"Trace {root.id} has conflicting Agent run IDs")
+            trace_id = str(root.trace_id or root.id)
+            runs = list(self.client.list_runs(project_name=self.project, trace_id=trace_id))
+            runs.sort(key=lambda run: (run.start_time, str(run.id)))
+            traces.append((root.start_time, AgentTrace(
+                execution_id=agent_run_id,
+                trace_id=trace_id,
+                root_run_id=str(root.id),
+                runs=tuple(_run_data(run) for run in runs),
+            )))
+        traces.sort(key=lambda item: item[0])
+        return [trace for _, trace in traces]
+
+    def wait_for_eval_traces(
+        self, eval_run_id: str | UUID, agent_run_ids: list[str], *,
+        timeout: float = 30.0, poll_interval: float = 1.0,
+    ) -> list[AgentTrace]:
+        """Wait until every submitted Agent run has at least one trace."""
+        if timeout < 0 or poll_interval <= 0:
+            raise ValueError("timeout must be nonnegative and poll_interval positive")
+        expected = {str(UUID(str(run_id))) for run_id in agent_run_ids}
+        if not expected:
+            raise ValueError("At least one agent_run_id is required")
+        deadline = monotonic() + timeout
+        while True:
+            traces = self.list_eval_traces(eval_run_id)
+            actual = {trace.execution_id for trace in traces}
+            if not actual <= expected:
+                raise ValueError("Evaluation traces contain an unexpected agent_run_id")
+            if expected <= actual:
+                return traces
+            if monotonic() >= deadline:
+                raise TimeoutError(f"Missing traces for Agent runs: {sorted(expected - actual)}")
+            sleep(min(poll_interval, deadline - monotonic()))
