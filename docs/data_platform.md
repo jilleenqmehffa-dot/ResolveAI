@@ -4,7 +4,7 @@
 
 ## 数据目录与版本
 
-`data_platform/catalog.json` 列出数据来源、负责人、分类、敏感字段和使用方。`data_platform/manifest.json` 固定零售数据、任务和划分文件的 SHA-256 值。当前版本为 `retail-bench-v1`；版本名由团队维护，文件内容必须与清单一致。
+`data_platform/catalog.json` 列出数据来源、负责人、分类、敏感字段和使用方。`data_platform/manifest.json` 固定零售数据、任务、划分和仅供评分使用的客户标准表的 SHA-256 值。当前版本为 `retail-bench-v2`；版本名由团队维护，文件内容必须与清单一致。
 
 ```bash
 .venv/bin/python -m data_platform.cli validate
@@ -13,7 +13,7 @@
 检查商品、用户、订单与支付方式的引用、金额、任务 ID 和训练/测试划分。更改源文件后，先运行质量检查，再用新版本名更新清单，并将源文件和清单一起提交：
 
 ```bash
-.venv/bin/python -m data_platform.cli pin --version retail-bench-v2
+.venv/bin/python -m data_platform.cli pin --version retail-bench-v3
 .venv/bin/python -m data_platform.cli validate
 ```
 

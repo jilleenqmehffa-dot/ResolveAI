@@ -7,17 +7,25 @@
 `benchmark_client.py` 和 `load_client.py` 是 executor 使用的内部客户端。
 运行前启动 Agent API、Worker、Commerce、RabbitMQ，并导入零售样例数据。
 配置 `AGENT_INTERNAL_TOKEN`；真实模型还需要 `DEEPSEEK_API_KEY`，
-Agent 任务评分还需要可读取 trace 的 `LANGSMITH_API_KEY`。
+Agent 任务评分还需要可读取 trace 的 `LANGSMITH_API_KEY`，模拟用户需要独立的
+`USER_SIMULATOR_API_KEY`。
 
 ## Agent 任务测评
 
-从仓库根目录运行：
+`user_simulate/evaluation_launcher.py` 负责启动整题测评并采集 Commerce 前后状态；
+`user_simulate/user_executor.py` 生成模拟用户消息，
+`user_simulate/orchestrator.py` 管理多轮对话。评估入口按 `eval_run_id`
+汇总 trace。从仓库根目录运行：
 
 ```bash
 .venv/bin/python -m evals.runner --mode agent-task --task-id 12
 ```
 
-在不调用 DeepSeek 的情况下验证完整任务链路：
+模拟用户的 LLM 配置集中在 `user_simulate/llm/`：`config.py` 读取独立的
+`USER_SIMULATOR_API_KEY`、模型名、温度、请求超时和重试次数；`factory.py` 创建模型，
+`client.py` 统一调用并校验文本回复。对应环境变量可参考 `.env.example`。
+
+使用 Mock Agent 检查 Agent 侧链路（模拟用户仍会调用 LLM）：
 
 ```bash
 .venv/bin/python -m evals.runner --mode agent-task --task-id 12 --llm-backend mock
@@ -26,7 +34,7 @@ Agent 任务评分还需要可读取 trace 的 `LANGSMITH_API_KEY`。
 `--llm-backend` 可选 `mock` 或 `deepseek`（默认）。该选项随 `/chat` 请求保存到
 Agent 执行记录，Worker 据此选择模型。`mock` 固定调用一次只读商品查询后
 回复固定文字，因此业务正确率通常很低；它用于检查执行、网络故障和测评链路。
-完整评分仍需 LangSmith trace。
+完整评分仍需 LangSmith trace 和模拟用户模型。
 
 `--task-id` 只测指定 ID 的一题，即使该题不在配置的 `split` 中也能运行。
 启动器必须明确指定 `--task-id` 或 `--all`，避免误跑整批任务。
@@ -37,33 +45,40 @@ Agent 执行记录，Worker 据此选择模型。`mock` 固定调用一次只读
 ```
 
 Agent 场景配置位于 `evals/scenarios/agent_task/config.yaml`，指定
-`tasks.json`、`split_tasks.json` 的 `test` 划分、业务数据快照、模型、
+`tasks.json`、`split_tasks.json` 的 `test` 划分、业务数据快照、私有客户标准表、模型、
 超时、LangSmith 项目和可选的逐题重建设置。因此 `--all` 会测评测试集 40 题。
 `--config` 可覆盖当前模式的整个 YAML 配置；旧的 `evals/runner.example.yaml`
 仍可作为自定义配置模板。
 测评运行会额外写入 `evals/runs/<run_id>.json` 摘要，记录数据文件哈希、评分器哈希和分数。
 需要每题使用相同业务初始状态时，按[数据中台说明](data_platform.md)配置独立测试库并使用 `--rebuild-each-task`。
+`agent-task` 默认从 `.env` 的 `DATABASE_URL` 保存本题客户及其订单、支付方式和售后记录；
+采集执行后状态后，会在一个数据库事务中恢复运行前的数据，即使题目执行失败也会尝试恢复。
+`DATABASE_URL` 必须指向正在接受 Agent 写入的 Commerce 数据库。此模式只允许 `--concurrency 1`；
+恢复失败会作为测评错误报告，并跳过后续题目。测评期间不要并行修改同一客户的数据。
+启用 `--rebuild-each-task` 时，恢复目标是该题重建完成后的初始状态。
 `--tasks` 可覆盖配置，直接测评指定 JSON 数组中的全部任务，此时不应用配置的划分。
-Bench 任务字段从
-`user_scenario.instructions` 映射为客户与消息；自定义任务也可直接提供
-`id`、`customer_id`、`message`、`evaluation_criteria`。Bench 身份解析使用
-配置的 `database` JSON。运行前需启动 Agent、Commerce，导入基准数据，并配置
-`.env` 的 `AGENT_INTERNAL_TOKEN` 和可读取 trace 的 LangSmith Key。
+测评器从 `task_customers.json` 按任务 ID 取得仅供前后状态快照和评分使用的客户 ID；
+它不解析场景文字，也不在初始请求中把真实 ID 交给 Agent。模拟用户 LLM 根据
+`user_scenario` 和 Agent 回复逐轮生成消息。Agent 会话使用随机的匿名标识；
+Agent 必须从对话中获取邮箱或姓名加邮编，调用身份查询工具后才能访问客户资料和订单。
+自定义任务须提供 `id`、`user_scenario.instructions`、`evaluation_criteria`，
+并在配置的 `customer_oracle` JSON 中为每个任务 ID 提供供评分使用的客户 ID。
+运行前需启动 Agent、Commerce，导入基准数据，并配置
+`.env` 的 `AGENT_INTERNAL_TOKEN`、`USER_SIMULATOR_API_KEY` 和可读取 trace 的 LangSmith Key。
 
-Agent 任务调用链为：场景加载题目 → `executors/agent_task.py` 采集执行前业务状态、
-提交 Agent 请求、等待终态、采集执行后状态和 trace →
-`evaluators/agent_task.py` 使用两个 Normalizer 及现有的
+Agent 任务调用链为：场景加载题目 → `evaluation_launcher.py` 采集执行前业务状态 →
+Orchestrator 在同一 Agent 会话内轮流调用模拟用户和 Agent，每题生成唯一
+`eval_run_id` → 采集执行后状态 → Trace Adapter 按 `eval_run_id` 抓取每轮
+Agent trace，校验各自的 `agent_run_id` → Normalizer 汇总整题轨迹 →
+`evaluators/agent_task.py` 使用
 `TaskSuccessEvaluator`、`TrajectoryEvaluator` 评分。executor 返回的原始对象
 只在运行中传递；`--output` 保存评分后的结构化结果。`concurrency` 默认 1；
 对共享同一业务库且会写入的任务，保持 1 并从一致的初始数据运行，以免题目之间
 相互影响。启动器按输入顺序写出 JSON 数组；每项包含 `task_id`、`customer_id`、
-`execution_id`、执行 `status`、`scores`、`reasons`、`error`，成功评分时另有
+`eval_run_id`、`execution_ids`、`history`、执行 `status`、`scores`、`reasons`、`error`，成功评分时另有
 `details` 保存两个评分器的原始结构化结果。单题失败仍保留对应位置的错误项。
 
-`evals/clients/benchmark_client.py` 从 `evals/scenarios/agent_task/datasets/tasks.json` 读取场景、从
-`evals/scenarios/agent_task/datasets/split_tasks.json` 选择任务，并用 `evals/scenarios/agent_task/datasets/db.json` 将场景中的邮箱、
-用户 ID、订单号或姓名加邮编解析为 Commerce 客户 ID。发送给 Agent 的消息只包含
-`known_info` 和 `reason_for_call`；评测标准中的预期动作不会进入请求。
+`evals/scenarios/base.py` 从任务文件和划分文件选题。客户标准表与评分标准中的预期动作不会传给模拟用户 LLM 或 Agent。
 
 ## 并发与网络故障
 
@@ -81,6 +96,7 @@ Agent 任务调用链为：场景加载题目 → `executors/agent_task.py` 采�
 
 并发场景配置在 `evals/scenarios/concurrency/config.yaml`，默认使用 mock 模型、
 `mock_mode: fast`、并发数 10、每题执行一次，并指定任务数据和请求超时。
+并发和 Locust 压测也为每次会话生成匿名请求标识，不把客户标准表中的 ID 传给 Agent。
 用 `--mock-mode latency` 可让 MockLLM 的每次调用随机等待 3～6 秒；一次正常任务
 通常调用模型两次（发出工具调用、收到工具结果后回复），因此人为等待合计通常为
 6～12 秒。`--mock-mode fast` 不添加人为延迟。CLI 参数优先于场景配置，例如：
