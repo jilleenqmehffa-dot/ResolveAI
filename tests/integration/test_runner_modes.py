@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy.engine import make_url
 
 from evals import runner
+from evals.adapter.toxiproxy_adapter import ProxyObservation
 from evals.clients.execution_timing import completed_run_seconds
 from evals.executors import concurrency as concurrency_executor
 from evals.executors import network_fault as network_executor
@@ -25,6 +26,13 @@ from evals.executors import network_fault as network_executor
 
 @pytest.fixture
 def inputs(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        network_executor, "capture_proxy",
+        lambda api, target: ProxyObservation(
+            target, f"{target}_proxy", "2026-11-28T00:00:00+00:00", True,
+            "upstream:8000", [{"name": "test", "type": "latency", "stream": "downstream", "attributes": {"latency": 250}}],
+        ),
+    )
     tasks = [
         {"id": "one", "customer_id": "u1", "message": "first"},
         {"id": "two", "customer_id": "u2", "message": "second"},
@@ -46,7 +54,8 @@ def inputs(tmp_path, monkeypatch):
     with sqlite3.connect(agent_db) as connection:
         connection.execute(
             "CREATE TABLE agent_runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, "
-            "error_code TEXT, created_at TEXT NOT NULL, finished_at TEXT)"
+            "error_code TEXT, created_at TEXT NOT NULL, finished_at TEXT, "
+            "attempt_count INTEGER NOT NULL DEFAULT 1)"
         )
     monkeypatch.setenv("AGENT_DATABASE_URL", f"sqlite+pysqlite:///{agent_db}")
     monkeypatch.setenv("DATA_PLATFORM_RUNS_DIR", str(tmp_path / "runs"))
@@ -60,7 +69,7 @@ def finish_fake_run(execution_id, seconds=0.2):
     finished = created + timedelta(seconds=seconds)
     with sqlite3.connect(database_path) as connection:
         connection.execute(
-            "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO agent_runs (id, status, error_code, created_at, finished_at) VALUES (?, ?, ?, ?, ?)",
             (execution_id.replace("-", ""), "SUCCEEDED", None,
              created.isoformat(" "), finished.isoformat(" ")),
         )
@@ -79,7 +88,7 @@ def test_collect_run_results_reads_late_terminal_state_and_marks_timeout(inputs)
     created = "2026-11-15 00:00:00.000000"
     with sqlite3.connect(database_path) as connection:
         connection.executemany(
-            "INSERT INTO agent_runs VALUES (?, 'RUNNING', NULL, ?, NULL)",
+            "INSERT INTO agent_runs (id, status, error_code, created_at, finished_at) VALUES (?, 'RUNNING', NULL, ?, NULL)",
             [(run_id.replace("-", ""), created) for run_id in (completed_id, pending_id)],
         )
 
@@ -334,8 +343,8 @@ def test_runner_web_ui_shows_the_same_finite_workload(inputs):
 def test_network_fault_mode_restores_proxy_even_if_run_raises(inputs, monkeypatch):
     config_path, output = inputs
     operations = []
-    monkeypatch.setattr(network_executor, "set_fault", lambda api, fault, ms: operations.append(("set", api, fault, ms)))
-    monkeypatch.setattr(network_executor, "reset_fault", lambda api: operations.append(("reset", api)))
+    monkeypatch.setattr(network_executor, "set_fault", lambda api, fault, ms, target: operations.append(("set", api, fault, ms, target)))
+    monkeypatch.setattr(network_executor, "reset_fault", lambda api, target: operations.append(("reset", api, target)))
 
     async def fail_submit(*_args):
         raise RuntimeError("network request failed")
@@ -344,20 +353,20 @@ def test_network_fault_mode_restores_proxy_even_if_run_raises(inputs, monkeypatc
     with pytest.raises(RuntimeError, match="network request failed"):
         runner.main([
             "--config", str(config_path), "--mode", "network-fault", "--task-id", "one",
-            "--fault", "latency", "--fault-ms", "250", "--llm-backend", "mock",
+            "--fault", "latency", "--fault-target", "rabbitmq", "--fault-ms", "250", "--llm-backend", "mock",
             "--output", str(output),
         ])
     assert operations == [
-        ("set", "http://127.0.0.1:8474", "latency", 250),
-        ("reset", "http://127.0.0.1:8474"),
+        ("set", "http://127.0.0.1:8474", "latency", 250, "rabbitmq"),
+        ("reset", "http://127.0.0.1:8474", "rabbitmq"),
     ]
 
 
 def test_network_fault_mode_records_scenario_and_selected_model(inputs, monkeypatch):
     config_path, output = inputs
     operations = []
-    monkeypatch.setattr(network_executor, "set_fault", lambda api, fault, ms: operations.append("set"))
-    monkeypatch.setattr(network_executor, "reset_fault", lambda api: operations.append("reset"))
+    monkeypatch.setattr(network_executor, "set_fault", lambda api, fault, ms, target: operations.append("set"))
+    monkeypatch.setattr(network_executor, "reset_fault", lambda api, target: operations.append("reset"))
     seen_backends = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -385,11 +394,17 @@ def test_network_fault_mode_records_scenario_and_selected_model(inputs, monkeypa
     assert [row["repetition"] for row in rows] == [1, 2]
     assert {row["status"] for row in rows} == {"SUCCEEDED"}
     assert {row["fault"] for row in rows} == {"disconnect"}
+    assert {row["fault_target"] for row in rows} == {"commerce"}
     assert {row["fault_ms"] for row in rows} == {250}
+    assert {row["proxy_observation"]["target"] for row in rows} == {"commerce"}
+    assert rows[0]["proxy_observation"]["toxics"][0]["name"] == "test"
+    assert rows[0]["database_observation"]["reachable"] is True
+    assert rows[0]["database_observation"]["found"] is False
     assert seen_backends == ["mock", "mock"]
     receipt = json.loads(next((output.parent / "runs").glob("*.json")).read_text())
     assert receipt["mode"] == "network-fault"
     assert receipt["fault"] == "disconnect"
+    assert receipt["fault_target"] == "commerce"
     assert receipt["llm_backend"] == "mock"
 
 

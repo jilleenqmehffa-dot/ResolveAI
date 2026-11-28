@@ -7,6 +7,7 @@ agent_base_url: http://127.0.0.1:8000
 toxiproxy_api: http://127.0.0.1:8474
 llm_backend: mock
 fault: latency
+fault_target: commerce
 fault_ms: 1000
 concurrency: 1
 repeat: 1

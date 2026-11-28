@@ -31,6 +31,11 @@ class AgentExecution:
     eval_run_id: str | None = None
     execution_ids: tuple[str, ...] = ()
     history: tuple[tuple[str, str], ...] = ()
+    fault: str | None = None
+    fault_target: str | None = None
+    fault_ms: int | None = None
+    proxy_observation: dict[str, Any] | None = None
+    tool_execution_observation: dict[str, Any] | None = None
 
 
 def reasons(success: Any, trajectory: Any) -> list[str]:
@@ -59,10 +64,36 @@ def evaluate(
         "scores": None,
         "reasons": [],
         "error": observed.error,
+        "fault": observed.fault,
+        "fault_target": observed.fault_target,
+        "fault_ms": observed.fault_ms,
+        "proxy_observation": observed.proxy_observation,
+        "tool_execution_observation": observed.tool_execution_observation,
+        "trace_observation": None,
     }
     if observed.error:
         row["reasons"] = [observed.error["message"]]
-        return row
+        if observed.fault is not None and not observed.execution_ids:
+            row["trace_observation"] = {"unavailable_reason": "no_execution_ids"}
+        can_score_fault = (
+            observed.fault is not None and observed.execution_id is not None and bool(observed.execution_ids)
+            and observed.before is not None and observed.after is not None
+        )
+        if not can_score_fault and observed.fault is not None and observed.eval_run_id and observed.execution_ids:
+            try:
+                adapter = trace_adapter or TraceAdapter()
+                traces = adapter.wait_for_eval_traces(
+                    observed.eval_run_id, list(observed.execution_ids), timeout=trace_timeout,
+                )
+                row["trace_observation"] = {
+                    "trace_ids": [trace.trace_id for trace in traces],
+                    "run_count": sum(len(trace.runs) for trace in traces),
+                    "errors": [run.error for trace in traces for run in trace.runs if run.error],
+                }
+            except Exception as exc:  # noqa: BLE001 - retain the primary task error
+                row["trace_observation"] = {"error_type": type(exc).__name__, "message": str(exc)}
+        if not can_score_fault:
+            return row
     try:
         if not observed.customer_id or not observed.execution_id:
             raise ValueError("Agent execution is missing identity or execution ID")
@@ -77,6 +108,11 @@ def evaluate(
             if not observed.traces:
                 raise ValueError("Agent execution is missing traces")
             trace = TraceNormalizer().normalize(observed.traces)
+        row["trace_observation"] = {
+            "trace_ids": list(trace.trace_ids),
+            "run_count": len(trace.runs),
+            "errors": list(trace.errors),
+        }
         normalizer = CommerceNormalizer()
         record = EvalRecord(
             task_id=observed.task_id,
@@ -92,11 +128,20 @@ def evaluate(
         success = TaskSuccessEvaluator().evaluate(record, observed.task)
         trajectory = TrajectoryEvaluator().evaluate(record, observed.task)
         row["scores"] = {"task_success": success.score, "trajectory": trajectory.score}
-        row["reasons"] = reasons(success, trajectory)
+        row["reasons"] = (
+            ([observed.error["message"]] if observed.error else [])
+            + reasons(success, trajectory)
+        )
         row["details"] = {"task_success": asdict(success), "trajectory": asdict(trajectory)}
     except Exception as exc:  # noqa: BLE001 - one bad result must not discard the batch
-        row["error"] = {"type": type(exc).__name__, "message": str(exc)}
-        row["reasons"] = [str(exc)]
+        if observed.error:
+            row["evaluation_error"] = {"type": type(exc).__name__, "message": str(exc)}
+            row["reasons"].append(str(exc))
+        else:
+            row["error"] = {"type": type(exc).__name__, "message": str(exc)}
+            row["reasons"] = [str(exc)]
+        if observed.fault is not None and row["trace_observation"] is None:
+            row["trace_observation"] = {"error_type": type(exc).__name__, "message": str(exc)}
     return row
 
 

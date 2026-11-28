@@ -143,14 +143,18 @@ class Scenario:
     test_database_url: str | None = None
     run_mode: str = "count"
     duration_seconds: float | None = None
+    fault_target: str = "commerce"
+    fault_case: str | None = None
+    outage_seconds: float | None = None
 
     @property
     def required_client_env(self) -> tuple[str, ...]:
         if self.mode == "agent-task":
-            return ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY", "USER_SIMULATOR_API_KEY")
+            required = ("AGENT_INTERNAL_TOKEN", "LANGSMITH_API_KEY", "USER_SIMULATOR_API_KEY")
+            return required + (("AGENT_DATABASE_URL",) if self.fault else ())
         if self.mode == "concurrency":
             return ("AGENT_INTERNAL_TOKEN", "AGENT_DATABASE_URL")
-        return ("AGENT_INTERNAL_TOKEN",)
+        return ("AGENT_INTERNAL_TOKEN", "AGENT_DATABASE_URL") if self.fault_case else ("AGENT_INTERNAL_TOKEN",)
 
     @property
     def required_worker_env(self) -> tuple[str, ...]:
@@ -185,7 +189,10 @@ class Scenario:
             "concurrency": self.concurrency,
             "repeat": None if self.mode == "concurrency" and self.run_mode == "duration" else self.repeat,
             "fault": self.fault,
+            "fault_target": self.fault_target,
             "fault_ms": self.fault_ms,
+            "fault_case": self.fault_case,
+            "outage_seconds": self.outage_seconds,
             "toxiproxy_api": self.toxiproxy_api,
             "required_services": list(self.required_services),
             "required_client_env": list(self.required_client_env),
@@ -202,6 +209,9 @@ def make_scenario(
     mock_mode: str = "fast",
     run_mode: str = "count",
     duration_seconds: float | None = None,
+    fault_target: str = "commerce",
+    fault_case: str | None = None,
+    outage_seconds: float | None = None,
 ) -> Scenario:
     if llm_backend not in {"deepseek", "mock"}:
         raise ValueError("llm_backend must be deepseek or mock")
@@ -216,5 +226,5 @@ def make_scenario(
     return Scenario(
         mode, inputs, llm_backend, concurrency, repeat, required_services,
         mock_mode, fault, fault_ms, toxiproxy_api, rebuild_each_task, test_database_url,
-        run_mode, duration_seconds,
+        run_mode, duration_seconds, fault_target, fault_case, outage_seconds,
     )

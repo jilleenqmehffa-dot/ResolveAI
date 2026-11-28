@@ -11,17 +11,12 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict
-from datetime import datetime
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.exc import SQLAlchemyError
-
-from evals.clients.execution_timing import completed_run_seconds
+from evals.adapter.agent_db_adapter import check_agent_database, collect_run_results
 from evals.clients.load_client import TERMINAL, Result
 from evals.scenarios.base import Scenario, map_task
-from services.agent_service.app.models.agent import AgentRun
 
 
 def make_workload(scenario: Scenario) -> dict:
@@ -99,75 +94,6 @@ def web_summary_html(metrics: dict | None) -> str:
         "a{color:#1463c3;}</style></head><body><a href='/'>返回 Locust 请求统计</a>"
         f"<h1>ResolveAI 压测结果</h1>{body}</body></html>"
     )
-
-
-def check_agent_database(database_url: str) -> None:
-    """Fail before submitting load if AgentRun results cannot be read."""
-    engine = create_engine(database_url, pool_pre_ping=True)
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1 FROM agent_runs LIMIT 1"))
-    except SQLAlchemyError as exc:
-        raise RuntimeError(
-            "Cannot read Agent database before load; check AGENT_DATABASE_URL "
-            "and the PostgreSQL host port mapping"
-        ) from exc
-    finally:
-        engine.dispose()
-
-
-def collect_run_results(results: dict[int, dict], database_url: str, *,
-                        interval: float, timeout: float) -> tuple[datetime | None, datetime | None]:
-    """Read submitted runs from Agent DB only after HTTP load has stopped."""
-    pending = {
-        UUID(row["execution_id"]): row
-        for row in results.values() if row["execution_id"] is not None
-    }
-    if not pending:
-        return None, None
-    engine = create_engine(database_url, pool_pre_ping=True)
-    deadline = time.monotonic() + timeout
-    first_created_at = None
-    last_finished_at = None
-    try:
-        while pending:
-            with engine.connect() as connection:
-                identifiers = list(pending)
-                for offset in range(0, len(identifiers), 500):
-                    batch = identifiers[offset:offset + 500]
-                    rows = connection.execute(
-                        select(
-                            AgentRun.id, AgentRun.status, AgentRun.error_code,
-                            AgentRun.created_at, AgentRun.finished_at,
-                        ).where(AgentRun.id.in_(batch))
-                    )
-                    for run_id, status, error_code, created_at, finished_at in rows:
-                        if first_created_at is None or created_at < first_created_at:
-                            first_created_at = created_at
-                        if status.value not in TERMINAL:
-                            continue
-                        result = pending.pop(run_id, None)
-                        if result is None:
-                            continue
-                        result["status"] = status.value
-                        result["error"] = error_code
-                        if finished_at is None:
-                            raise ValueError(f"terminal AgentRun {run_id} has no finished_at")
-                        if last_finished_at is None or finished_at > last_finished_at:
-                            last_finished_at = finished_at
-                        result["total_seconds"] = completed_run_seconds({
-                            "created_at": created_at.isoformat(),
-                            "updated_at": finished_at.isoformat(),
-                        })
-            if not pending or time.monotonic() >= deadline:
-                break
-            time.sleep(min(interval, max(0, deadline - time.monotonic())))
-    finally:
-        engine.dispose()
-    for result in pending.values():
-        result["status"] = "COMPLETION_TIMEOUT"
-        result["error"] = "AgentRun did not reach a terminal state before the completion deadline"
-    return first_created_at, last_finished_at
 
 
 def execute(scenario: Scenario, token: str) -> list[Result]:

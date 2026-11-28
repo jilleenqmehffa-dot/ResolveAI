@@ -11,7 +11,8 @@ SERVICES = ("agent-api", "agent-worker", "commerce", "postgres", "rabbitmq")
 
 
 def prepare(args: Namespace) -> Scenario:
-    if args.fault is not None or args.fault_ms is not None or args.toxiproxy_api:
+    if (args.fault is not None or args.fault_target is not None or args.fault_ms is not None
+            or args.toxiproxy_api or args.fault_case is not None or args.outage_seconds is not None):
         raise ValueError("fault options are only valid for network-fault mode")
     if args.rebuild_each_task or args.confirm_database:
         raise ValueError("database rebuild is only valid for agent-task mode")

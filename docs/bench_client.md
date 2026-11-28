@@ -5,6 +5,10 @@
 `executors/` 执行测试并返回原始观察；`evaluators/` 根据观察评分；
 `runner.py` 负责选择场景、调度、写出结果和运行摘要。
 `benchmark_client.py` 和 `load_client.py` 是 executor 使用的内部客户端。
+`adapter/agent_api_adapter.py` 采集提交与轮询结果，
+`adapter/agent_db_adapter.py` 采集 Agent 数据库终态，
+`adapter/toxiproxy_adapter.py` 采集注入后的代理状态；Commerce 状态和 LangSmith
+trace 分别由已有的 `commerce_adapter.py`、`trace_adapter.py` 采集。
 运行前启动 Agent API、Worker、Commerce、RabbitMQ，并导入零售样例数据。
 配置 `AGENT_INTERNAL_TOKEN`；真实模型还需要 `DEEPSEEK_API_KEY`，
 Agent 任务评分还需要可读取 trace 的 `LANGSMITH_API_KEY`，模拟用户需要独立的
@@ -37,6 +41,17 @@ Agent 执行记录，Worker 据此选择模型。`mock` 固定调用一次只读
 完整评分仍需 LangSmith trace 和模拟用户模型。
 
 `--task-id` 只测指定 ID 的一题，即使该题不在配置的 `split` 中也能运行。
+需要同时观察 Commerce 故障、Agent 轨迹、工具重试和最终业务正确率时，先将
+`COMPOSE_COMMERCE_BASE_URL` 切到 Toxiproxy，然后运行完整的 `agent-task` 测评：
+
+```bash
+.venv/bin/python -m evals.runner --mode agent-task --task-id 12 --fault timeout --fault-target commerce --fault-ms 12000
+```
+
+该模式在故障期间执行多轮任务并采集 Commerce 前后状态；报告包含故障配置、
+Toxiproxy 实际状态、Agent 数据库中的工具调用次数及错误、LangSmith trace ID 和评分。
+失败任务若已有执行 ID，也会尝试读取 trace；没有 trace 时在结果中记录读取错误。
+完整任务仍需模拟用户与 Agent 模型、LangSmith tracing 及 Agent 数据库连接。
 启动器必须明确指定 `--task-id` 或 `--all`，避免误跑整批任务。
 批量测评时运行：
 
@@ -172,13 +187,18 @@ Ctrl+C 关闭。端口可用 `--web-port`
 .venv/bin/python -m evals.runner --mode network-fault --task-id 12
 ```
 
-网络场景配置在 `evals/scenarios/network_fault/config.yaml`，默认注入 1000 毫秒
-延迟、并发数 1，并指定 Toxiproxy 管理地址。`--fault` 可覆盖为 `latency`、
+网络场景配置在 `evals/scenarios/network_fault/config.yaml`，默认向 Commerce 入口注入 1000 毫秒
+延迟、并发数 1，并指定 Toxiproxy 管理地址。`--fault-target` 可选 `commerce`、`llm`、
+`rabbitmq`、`postgres`、`client-api`；先按[基础设施说明](../infra/README.md#网络故障)
+将对应调用方地址切到代理。`--fault` 可覆盖为 `latency`、
 `timeout`、`disconnect`、`down`；`--fault-ms` 和 `--toxiproxy-api` 也可覆盖。
 mock 模型固定调用一次
 只读商品查询，可验证 Agent→Commerce 的故障链路而不产生模型 token。
 `executors/network_fault.py` 自行设置故障、逐次提交请求并等待终态，
-收集每次请求的状态、耗时、故障类型和持续时间，结束时恢复代理；
+收集每次请求的状态、耗时、故障目标、故障类型、持续时间和注入后的代理状态；
+API 失败时另记失败阶段、异常类型和可用的 HTTP 状态码；若配置了
+`AGENT_DATABASE_URL`，还会独立采集 Agent 数据库可达性及执行记录状态，
+数据库查询失败只记为观察结果，结束时恢复代理；
 此模式不计算任务正确率。
 
 `load_client.py` 负责为每次请求创建独立会话、生成幂等键及轮询终态；
@@ -190,6 +210,36 @@ mock 模型固定调用一次
 `evals/reports/concurrency/` 或 `evals/reports/network-fault/`，文件名由 UTC 时间和
 随机 ID 组成，避免覆盖旧结果。显式 `--output` 仍可指定其他位置。
 `evals/runs/` 另外保存包含模式、模型和故障场景的运行摘要。
+
+### 五种恢复场景
+
+选择单题运行；`--outage-seconds` 控制恢复前的故障窗口，默认 5 秒：
+
+```bash
+.venv/bin/python -m evals.runner --mode network-fault --task-id 12 --fault-case client-disconnect --outage-seconds 5
+```
+
+将 `client-disconnect` 换成 `commerce-disconnect`、`rabbitmq-disconnect`、
+`worker-crash` 或 `postgres-disconnect` 即可。先用 `--dry-run` 核对目标和模型。
+运行前要有 `.env` 中的 `AGENT_INTERNAL_TOKEN`、`AGENT_DATABASE_URL`；Agent API、
+Worker、Commerce、RabbitMQ、PostgreSQL 和 Toxiproxy 要已启动，且 Toxiproxy
+已加载 `infra/toxiproxy/proxies.json` 中的五个代理。除 Worker 崩溃外，测试前按
+[代理入口配置](../infra/README.md#网络故障)重建相应调用方容器，让该链路指向代理。
+
+| 场景 | 注入与恢复 | 报告中的主要证据 |
+| --- | --- | --- |
+| `client-disconnect` | 提交成功后关闭客户端 API 代理，再打开 | 断网期间请求失败；恢复后查询原 `execution_id`，对比 API 与 AgentRun 终态 |
+| `commerce-disconnect` | 关闭 Worker 的 Commerce 代理，再打开 | `ToolExecution` 尝试次数、错误和最终执行状态 |
+| `rabbitmq-disconnect` | 关闭 API/Worker 的 Broker 代理，再打开 | 按原幂等键重新提交返回同一 AgentRun，原任务达到终态 |
+| `worker-crash` | AgentRun 进入 RUNNING 后强停并重启 `agent-worker` | AgentRun 尝试次数增加、恢复后终态、checkpoint 数量 |
+| `postgres-disconnect` | AgentRun 进入 RUNNING 后关闭 Worker 的 Agent PostgreSQL 代理，再打开 | 恢复后的 API/数据库状态一致、checkpoint 数量 |
+
+每条结果的 `checks` 为自动判定，失败时 runner 返回非零退出码。`outage_observation`、
+`database_observation`、`checkpoint_before`、`checkpoint_after` 和
+`tool_execution_observation` 保留原始证据。上述命名场景默认使用 Mock Agent，
+其中 Commerce 只调用只读商品查询，可验证超时和重试；它不能验证写操作幂等性或
+真实任务的业务正确率。需要这两项时运行前述 `agent-task --fault-target commerce`
+整题测评，结合 Commerce 前后快照和 LangSmith trace 查看结果。
 
 ## Commerce 查询覆盖
 

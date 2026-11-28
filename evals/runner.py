@@ -17,7 +17,8 @@ from evals.executors import execute
 from evals.executors.concurrency import execute_with_web_ui
 from evals.scenarios import prepare_scenario
 from evals.scenarios.base import load_tasks, map_task, select_split
-from evals.scenarios.network_fault import FAULTS
+from evals.scenarios.network_fault import FAULTS, TARGETS
+from evals.scenarios.network_fault.cases import CASES
 
 __all__ = ["load_tasks", "main", "map_task", "select_split"]
 
@@ -52,7 +53,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration", type=float, help="seconds to start new tasks in duration mode")
     parser.add_argument("--web-ui", action="store_true", help="show this concurrency run in a live Locust Web UI")
     parser.add_argument("--web-port", type=int, default=8090, help="runner Locust Web UI port (default: 8090)")
-    parser.add_argument("--fault", choices=FAULTS, help="override network-fault scenario fault")
+    parser.add_argument("--fault", choices=FAULTS, help="inject a fault in network-fault or agent-task mode")
+    parser.add_argument("--fault-target", choices=tuple(TARGETS), help="dependency proxy to fault")
+    parser.add_argument("--fault-case", choices=tuple(CASES), help="run a named recovery scenario")
+    parser.add_argument("--outage-seconds", type=float, help="duration before restoring a named fault case")
     parser.add_argument("--fault-ms", type=int)
     parser.add_argument("--toxiproxy-api", help="Toxiproxy management API URL")
     parser.add_argument("--rebuild-each-task", action="store_true", help="restore pinned Commerce data before every task")
@@ -62,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--limit must be positive")
     if (args.repeat is not None and args.repeat < 1) or (args.fault_ms is not None and args.fault_ms < 0) or (args.concurrency is not None and args.concurrency < 1):
         parser.error("--repeat and --concurrency must be positive; --fault-ms must be nonnegative")
+    if args.outage_seconds is not None and (not 0 < args.outage_seconds < float("inf")):
+        parser.error("--outage-seconds must be positive and finite")
     if args.web_ui and args.mode != "concurrency":
         parser.error("--web-ui is only available for --mode concurrency")
     if args.run_mode == "duration" and args.mode != "concurrency":
@@ -95,7 +101,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def finish_run(raw_results, scenario, inputs, output: Path, process=None) -> int:
     if scenario.mode == "agent-task":
-        rows = [evaluate_agent_task(result) for result in raw_results]
+        rows = [
+            evaluate_agent_task(
+                result, trace_timeout=float(inputs.config.get("trace_timeout", 30)),
+            )
+            for result in raw_results
+        ]
     else:
         rows = [asdict(result) for result in raw_results]
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +120,10 @@ def finish_run(raw_results, scenario, inputs, output: Path, process=None) -> int
         mock_mode=scenario.mock_mode,
         mode=scenario.mode,
         fault=scenario.fault,
+        fault_target=scenario.fault_target if scenario.fault or scenario.fault_case else None,
         fault_ms=scenario.fault_ms,
+        fault_case=scenario.fault_case,
+        outage_seconds=scenario.outage_seconds,
         concurrency=scenario.concurrency,
         repeat=None if scenario.mode == "concurrency" and scenario.run_mode == "duration" else scenario.repeat,
         run_mode=scenario.run_mode if scenario.mode == "concurrency" else None,
@@ -132,7 +146,11 @@ def finish_run(raw_results, scenario, inputs, output: Path, process=None) -> int
         )
     failed = {"ERROR", "POLL_TIMEOUT", "COMPLETION_TIMEOUT", "FAILED", "CANCELLED", "TIMED_OUT"}
     print(f"Status counts: {dict(Counter(row['status'] for row in rows))}")
-    exit_code = 1 if any(row["error"] or row["status"] in failed for row in rows) else 0
+    exit_code = 1 if any(
+        row["error"] or row["status"] in failed
+        or any(value is False for value in (row.get("checks") or {}).values())
+        for row in rows
+    ) else 0
     if process is not None:
         print("Locust Web UI keeps these results visible. Press Ctrl+C here to close it.", flush=True)
         try:

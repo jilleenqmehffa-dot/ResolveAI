@@ -43,6 +43,19 @@ def test_agent_scenario_model_override_changes_worker_requirement(capsys) -> Non
     assert "AGENT_INTERNAL_TOKEN" in preview["required_worker_env"]
 
 
+def test_agent_task_can_run_full_scoring_with_commerce_fault(capsys) -> None:
+    assert runner.main([
+        "--mode", "agent-task", "--task-id", "12", "--fault", "timeout",
+        "--fault-target", "commerce", "--fault-ms", "12000", "--dry-run",
+    ]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["fault"] == "timeout"
+    assert preview["fault_target"] == "commerce"
+    assert preview["fault_ms"] == 12000
+    assert "toxiproxy" in preview["required_services"]
+    assert "AGENT_DATABASE_URL" in preview["required_client_env"]
+
+
 def test_concurrency_mock_mode_cli_overrides_scenario_config(tmp_path, capsys) -> None:
     config = tmp_path / "concurrency.json"
     config.write_text(json.dumps({
@@ -123,3 +136,24 @@ def test_custom_split_is_not_labeled_as_pinned_dataset(tmp_path, capsys) -> None
     preview = json.loads(capsys.readouterr().out)
     assert preview["task_ids"] == ["12"]
     assert preview["dataset_version"] is None
+
+
+@pytest.mark.parametrize(("case", "target", "fault", "mock_mode"), [
+    ("client-disconnect", "client-api", "down", "fast"),
+    ("commerce-disconnect", "commerce", "down", "fast"),
+    ("rabbitmq-disconnect", "rabbitmq", "down", "fast"),
+    ("worker-crash", "worker", None, "latency"),
+    ("postgres-disconnect", "postgres", "down", "latency"),
+])
+def test_named_fault_cases_preview(case, target, fault, mock_mode, capsys) -> None:
+    assert runner.main([
+        "--mode", "network-fault", "--task-id", "12", "--fault-case", case,
+        "--outage-seconds", "3", "--dry-run",
+    ]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["fault_case"] == case
+    assert preview["fault_target"] == target
+    assert preview["fault"] == fault
+    assert preview["mock_mode"] == mock_mode
+    assert preview["outage_seconds"] == 3
+    assert preview["required_client_env"] == ["AGENT_INTERNAL_TOKEN", "AGENT_DATABASE_URL"]
