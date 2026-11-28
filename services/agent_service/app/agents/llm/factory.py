@@ -32,6 +32,7 @@ def create_deepseek_model(
     return ChatDeepSeek(
         model=selected_model,
         api_key=api_key,
+        base_url=settings.deepseek_base_url,
         temperature=temperature,
         timeout=timeout,
         max_retries=max_retries,

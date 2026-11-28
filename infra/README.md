@@ -8,7 +8,7 @@ docker compose --env-file .env -f infra/docker-compose.yml up --build -d
 docker compose --env-file .env -f infra/docker-compose.yml --profile monitoring up -d
 ```
 
-第一条启动业务服务、两个逻辑数据库、RabbitMQ、Worker、beat 和 Toxiproxy。
+第一条启动业务服务、两个逻辑数据库、RabbitMQ、Worker、beat、Toxiproxy 和 LLM HTTPS 转发层。
 第二条启动 Flower、Prometheus、Blackbox Exporter、cAdvisor、Docker 容器元数据导出器与 Grafana。监控界面仅绑定
 宿主机回环地址：Flower `http://127.0.0.1:5555`、Prometheus
 `http://127.0.0.1:9090`、Grafana `http://127.0.0.1:3000`。若宿主机 3000
@@ -52,9 +52,53 @@ Docker 中的 `8089` Web UI 是独立的交互式持续压测服务，不显示 
 执行带网络故障的 Agent 任务使用[统一测评入口](../docs/bench_client.md)；
 以下命令用于单独检查或手动控制 Toxiproxy。
 
-Agent 工具调用使用 `COMMERCE_BASE_URL=http://toxiproxy:18080`，代理唯一上游是
-`commerce:8000`。PostgreSQL、RabbitMQ 和 Commerce 对客户端的访问不会经过代理。
-未注入故障时代理直接转发。管理 API 只在宿主机的 `127.0.0.1:8474` 开放。
+Compose 默认直连原服务。仅在故障测试时，在 `.env` 中按目标设置下表对应的
+`COMPOSE_*` 变量，再重新创建使用该连接的容器。客户端使用的 `.env` 中
+`DATABASE_URL`、`AGENT_DATABASE_URL` 等宿主机地址与 Compose 容器地址分开配置。
+
+| 目标 | Compose 变量 | 代理地址 | 默认直连地址 |
+| --- | --- | --- | --- |
+| Commerce 工具 | `COMPOSE_COMMERCE_BASE_URL` | `http://toxiproxy:18080` | `http://commerce:8000` |
+| Agent LLM | `COMPOSE_DEEPSEEK_BASE_URL` | `http://toxiproxy:18081` | `https://api.deepseek.com` |
+| RabbitMQ | `COMPOSE_RABBITMQ_URL` | `amqp://resolveai:<密码>@toxiproxy:15672//` | `rabbitmq:5672` |
+| PostgreSQL Commerce 库 | `COMPOSE_DATABASE_URL` | `postgresql+psycopg://resolveai:<密码>@toxiproxy:15432/resolveai` | `postgres:5432` |
+| PostgreSQL Agent 库 | `COMPOSE_AGENT_DATABASE_URL` | `postgresql+psycopg://resolveai:<密码>@toxiproxy:15432/resolveai_agent` | `postgres:5432` |
+| 仅 Worker 的 Agent 库 | `COMPOSE_WORKER_AGENT_DATABASE_URL` | `postgresql+psycopg://resolveai:<密码>@toxiproxy:15432/resolveai_agent` | 同 Agent 库 |
+
+LLM 代理先转发到容器内的 `llm-gateway`，由它校验 DeepSeek 的 HTTPS 证书并连接
+`api.deepseek.com`；这样 Agent 仍可将 HTTP 地址交给 Toxiproxy。测试进程若在宿主机
+调用模拟用户 LLM，可设置 `USER_SIMULATOR_BASE_URL=http://127.0.0.1:18081`。
+PostgreSQL 两个逻辑库共用一个代理端口，故障会同时影响所有经该端口连接的服务。
+RabbitMQ 代理端口 `15672` 在这里是 AMQP TCP，不是管理页面。
+
+例如只测试 Commerce 故障，在 `.env` 设置 `COMPOSE_COMMERCE_BASE_URL=http://toxiproxy:18080`，
+重新创建 `agent-api` 和 `agent-worker`，然后运行：
+
+```bash
+.venv/bin/python -m evals.runner --mode network-fault --task-id 12 --fault-target commerce --fault timeout --fault-ms 12000
+```
+
+上例只检查故障下的提交与终态。若要检查 Agent 工具重试、LangSmith 轨迹和最终
+业务结果，使用 `--mode agent-task` 并传入相同的故障参数；该模式会采集 Commerce
+前后快照并评分，详细命令见[统一测评入口](../docs/bench_client.md#agent-任务测评)。
+
+`--fault-target` 还可选 `llm`、`rabbitmq`、`postgres` 和 `client-api`。选择目标时必须
+先把对应调用方的地址切到代理；mock 模型不会发出 LLM 网络请求。切换数据库或 RabbitMQ
+地址后需重新创建相应的迁移、API、Worker、beat 或 Commerce 容器。恢复日常运行时
+删除相应 `COMPOSE_*` 覆盖值并重新创建容器。
+
+Client→Agent API 入口由测试客户端控制。要测试它，将场景 YAML 的
+`agent_base_url` 改为 `http://127.0.0.1:18082`，并选 `--fault-target client-api`；
+服务端配置无需改动。所有代理端口仅绑定宿主机回环地址；Toxiproxy 管理 API 为
+`127.0.0.1:8474`。
+
+五种命名恢复场景使用 `--fault-case`，说明和命令见[统一测评入口](../docs/bench_client.md#五种恢复场景)。
+`client-disconnect` 自动让测试客户端通过 `agent_proxy_url` 连接（默认
+`http://127.0.0.1:18082`）；其他场景沿用 `agent_base_url`。`postgres-disconnect`
+建议只设置 `COMPOSE_WORKER_AGENT_DATABASE_URL`，让 API、beat 和测试器继续直连
+Agent 库，便于观察 Worker 断连后状态。`rabbitmq-disconnect` 要把 API、Worker 和
+beat 的 RabbitMQ 连接都切到代理，再重建这些容器。`worker-crash` 会强停并重启
+`agent-worker`，只在隔离的测试环境执行。
 
 ```bash
 python3 infra/toxiproxy/control.py status
@@ -63,11 +107,13 @@ python3 infra/toxiproxy/control.py timeout --ms 12000
 python3 infra/toxiproxy/control.py disconnect
 python3 infra/toxiproxy/control.py down
 python3 infra/toxiproxy/control.py reset
+python3 infra/toxiproxy/control.py status --target rabbitmq
 ```
 
 每次设置场景先清除上一个场景。`latency` 延迟响应，`timeout` 丢弃响应数据直到
 指定毫秒数后断开，`disconnect` 立即重置连接，`down` 停止代理监听；`reset`
-恢复正常。故障只应用于实验中的 Agent→Commerce 请求。注入故障时 Agent 的
+恢复正常。以上命令默认操作 Commerce 代理，`--target` 可选择其他入口；一次只运行
+一个故障场景，重置操作会清除 Toxiproxy 中所有 toxic。注入故障时 Agent 的
 `/ready` 可能变为不健康，这是预期现象；使用 `reset` 恢复后会重新健康。
 
 ## 监控范围

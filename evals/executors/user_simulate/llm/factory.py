@@ -13,6 +13,7 @@ def create_user_model(settings: SimulatorLLMSettings | None = None) -> ChatDeepS
     return ChatDeepSeek(
         model=settings.model,
         api_key=settings.api_key,
+        base_url=settings.base_url,
         temperature=settings.temperature,
         timeout=settings.timeout_seconds,
         max_retries=settings.max_retries,

@@ -21,7 +21,7 @@ PostgreSQL 容器承载，但分别使用 `resolveai` 和 `resolveai_agent` 数�
 数据库和 RabbitMQ 数据保存在 Docker 卷中。若已有 PostgreSQL 卷，首次初始化脚本
 不会再次创建 Agent 数据库，需要先确保 `resolveai_agent` 存在。
 
-Agent 到 Commerce 的 HTTP 请求默认经过 Toxiproxy，未启用故障时正常透传。
+Agent 到 Commerce、LLM、RabbitMQ 和 PostgreSQL 的连接默认直连；故障测试可按目标切到 Toxiproxy。
 故障注入和监控的操作方法见 [基础设施说明](infra/README.md)。
 Agent 任务测评、并发和网络故障测试见 [统一测评入口](docs/bench_client.md)。
 数据目录、质量检查、版本、测试库重建和测评摘要查询见 [最小数据中台](docs/data_platform.md)。

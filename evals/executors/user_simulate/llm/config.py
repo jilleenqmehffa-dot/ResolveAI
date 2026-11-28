@@ -19,6 +19,7 @@ class SimulatorLLMSettings:
     temperature: float = 0.7
     timeout_seconds: float = 30.0
     max_retries: int = 0
+    base_url: str = "https://api.deepseek.com"
 
     def __post_init__(self) -> None:
         if not self.api_key.strip() or self.api_key == "your-user-simulator-api-key":
@@ -31,6 +32,8 @@ class SimulatorLLMSettings:
             raise ValueError("USER_SIMULATOR_TIMEOUT_SECONDS must be positive")
         if self.max_retries < 0:
             raise ValueError("USER_SIMULATOR_MAX_RETRIES must be nonnegative")
+        if not self.base_url.strip():
+            raise ValueError("USER_SIMULATOR_BASE_URL must be nonempty")
 
 
 def load_settings(*, env_file: Path | None = None) -> SimulatorLLMSettings:
@@ -46,4 +49,5 @@ def load_settings(*, env_file: Path | None = None) -> SimulatorLLMSettings:
         temperature=float(get("USER_SIMULATOR_TEMPERATURE", "0.7")),
         timeout_seconds=float(get("USER_SIMULATOR_TIMEOUT_SECONDS", "30")),
         max_retries=int(get("USER_SIMULATOR_MAX_RETRIES", "0")),
+        base_url=get("USER_SIMULATOR_BASE_URL", "https://api.deepseek.com"),
     )

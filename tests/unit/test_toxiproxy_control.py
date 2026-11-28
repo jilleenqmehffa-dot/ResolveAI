@@ -25,3 +25,19 @@ def test_reset_reenables_and_disconnect_uses_reset_peer(monkeypatch):
             },
         ),
     ]
+
+
+def test_fault_can_target_rabbitmq_without_changing_commerce(monkeypatch):
+    calls = []
+
+    def call(api, path, payload=None):
+        calls.append((path, payload))
+        return {}
+
+    monkeypatch.setattr(control, "call", call)
+    control.set_fault("http://proxy.test", "down", target="rabbitmq")
+    assert calls == [
+        ("/reset", {}),
+        ("/proxies/agent_rabbitmq_tcp", {"enabled": True}),
+        ("/proxies/agent_rabbitmq_tcp", {"enabled": False}),
+    ]

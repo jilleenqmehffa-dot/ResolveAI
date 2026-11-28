@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     agent_retry_max_seconds: float = Field(default=10, gt=0)
     deepseek_api_key: str | None = None
     deepseek_model: str = "deepseek-flash"
+    deepseek_base_url: str = "https://api.deepseek.com"
 
     def require_agent_database_url(self) -> str:
         url = self.agent_database_url

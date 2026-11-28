@@ -16,6 +16,7 @@ def test_settings_prefer_process_environment_over_env_file(tmp_path, monkeypatch
     env_file.write_text(
         "USER_SIMULATOR_API_KEY=file-key\n"
         "USER_SIMULATOR_MODEL=file-model\n"
+        "USER_SIMULATOR_BASE_URL=https://api.deepseek.com\n"
         "USER_SIMULATOR_TEMPERATURE=0.3\n"
         "USER_SIMULATOR_TIMEOUT_SECONDS=12\n"
         "USER_SIMULATOR_MAX_RETRIES=1\n",
@@ -23,9 +24,11 @@ def test_settings_prefer_process_environment_over_env_file(tmp_path, monkeypatch
     )
     monkeypatch.setenv("USER_SIMULATOR_API_KEY", "process-key")
     monkeypatch.setenv("USER_SIMULATOR_MODEL", "deepseek-flash")
+    monkeypatch.setenv("USER_SIMULATOR_BASE_URL", "http://127.0.0.1:18081")
     settings = load_settings(env_file=env_file)
     assert settings.api_key == "process-key"
     assert settings.model == "deepseek-flash"
+    assert settings.base_url == "http://127.0.0.1:18081"
     assert (settings.temperature, settings.timeout_seconds, settings.max_retries) == (0.3, 12, 1)
     assert "process-key" not in repr(settings)
 
@@ -33,6 +36,7 @@ def test_settings_prefer_process_environment_over_env_file(tmp_path, monkeypatch
     assert model.api_key.get_secret_value() == "process-key"
     assert model.model_name == "deepseek-flash"
     assert model.max_retries == 1
+    assert str(model.api_base).rstrip("/") == "http://127.0.0.1:18081"
 
 
 @pytest.mark.parametrize("changes", [
@@ -41,6 +45,7 @@ def test_settings_prefer_process_environment_over_env_file(tmp_path, monkeypatch
     {"temperature": float("nan")},
     {"timeout_seconds": 0},
     {"max_retries": -1},
+    {"base_url": " "},
 ])
 def test_invalid_model_configuration_is_rejected(changes):
     values = {"api_key": "test-key", "model": "deepseek-flash"} | changes

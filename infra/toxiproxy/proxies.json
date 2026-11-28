@@ -4,5 +4,29 @@
     "listen": "0.0.0.0:18080",
     "upstream": "commerce:8000",
     "enabled": true
+  },
+  {
+    "name": "agent_llm_http",
+    "listen": "0.0.0.0:18081",
+    "upstream": "llm-gateway:8080",
+    "enabled": true
+  },
+  {
+    "name": "agent_rabbitmq_tcp",
+    "listen": "0.0.0.0:15672",
+    "upstream": "rabbitmq:5672",
+    "enabled": true
+  },
+  {
+    "name": "postgres_tcp",
+    "listen": "0.0.0.0:15432",
+    "upstream": "postgres:5432",
+    "enabled": true
+  },
+  {
+    "name": "client_agent_http",
+    "listen": "0.0.0.0:18082",
+    "upstream": "agent-api:8000",
+    "enabled": true
   }
 ]

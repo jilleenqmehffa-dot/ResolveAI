@@ -28,6 +28,15 @@ def test_factory_uses_environment_key_and_model(monkeypatch: pytest.MonkeyPatch)
     assert model.max_retries == 0
 
 
+def test_factory_uses_configured_proxy_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "http://toxiproxy:18081")
+
+    model = factory.create_deepseek_model()
+
+    assert str(model.api_base).rstrip("/") == "http://toxiproxy:18081"
+
+
 @pytest.mark.asyncio
 async def test_mock_model_needs_no_key_and_reports_zero_tokens(
     monkeypatch: pytest.MonkeyPatch, tmp_path
